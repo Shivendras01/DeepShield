@@ -3,11 +3,11 @@
 > **Target Audience:** Future AI coding assistants, autonomous agents, and LLMs pair programming on the DeepShield repository.  
 > **Repository:** `DeepShield` (B.Tech Minor Research Project, ITM University Gwalior)  
 > **Authors & Roles:**  
-> - **Shivendra Singh Chauhan (User):** Backend Architecture, Django REST Framework, Persistence & Audit, Telemetry Heuristics, Risk Fusion Engine, Containerization & Serving.  
+> - **Shivendra Singh Chauhan (User):** Backend Architecture, Django REST Framework, Persistence & Audit, Telemetry Heuristics, Risk Fusion Engine, Video Pipeline & Serving.  
 > - **Divya:** ML Model Training (EfficientNet-B0 / Xception), Passive Liveness Module (MediaPipe Face Mesh + EAR), Grad-CAM Generation, React Dashboard Frontend.  
-> **Current Active Branch:** `feature/risk-fusion-engine`  
+> **Current Active Branch:** `feature/video-processor`  
 > **Remote Origin:** `https://github.com/Shivendras01/DeepShield.git`  
-> **Last Updated:** Risk Fusion Engine Implementation & Categorical Escalation
+> **Last Updated:** OpenCV Video Ingestion Pipeline & Face Cropping Implementation
 
 ---
 
@@ -77,29 +77,36 @@ git push -u origin feature/<short-descriptive-name>
   - Calculates frame timestamp jitter (standard deviation of inter-frame intervals) to detect unnaturally rigid pre-recorded video injection playback.
   - Outputs normalized 0–100 telemetry risk score with human-readable diagnostic reasons.
 
-### 🔄 Step 2C: Risk Fusion Engine (Current Branch: `feature/risk-fusion-engine`)
+### ✅ Step 2C: Risk Fusion Engine (Merged into `main` via PR #2)
 - **Risk Fusion Engine (`backend/screening/fusion.py`):**
   - Calculates weighted combination: $S = 100 \times (0.50 s_s + 0.30 s_l + 0.20 s_t)$.
   - Implements **rule-based categorical escalation** (virtual camera detection, high-confidence deepfake manipulation, severe liveness failure, or multi-channel corroboration) to prevent single strong threats from being diluted.
   - Maps to 4 risk tiers (`LOW`, `GUARDED`, `ELEVATED`, `HIGH`) and actionable reviewer advice.
-- **Unit Tests (`backend/screening/test_fusion.py`):** 6 test suites verifying bona-fide sessions, single-channel escalations, multi-channel corroborations, weight constraints, and score normalization.
-- All 14 tests passing (`OK`).
+
+### 🔄 Step 2D: Video Processing Pipeline (Current Branch: `feature/video-processor`)
+- **Video Processor (`backend/screening/video_processor.py`):**
+  - Opens and inspects `.mp4`/`.webm` streams (fps, duration, frame counts).
+  - Performs controlled frame sampling at a configurable stride (target 5 FPS).
+  - Detects faces with OpenCV and crops with a 20% margin to preserve blending boundaries.
+  - Resizes crops to $224 \times 224$ uint8 for downstream EfficientNet-B0 inference.
+- **Unit Tests (`backend/screening/test_video_processor.py`):** 4 test suites verifying metadata extraction, stride sampling, crop dimensions, and error handling.
+- All 18 screening tests passing (`OK`).
 
 ---
 
 ## 4. Immediate Next Steps & Agent Roadmap
 
 ### Immediate Task (Current Turn):
-1. **Make 2 meaningful, simple commits** on branch `feature/risk-fusion-engine`:
-   - Commit 1: Core fusion engine & updated documentation (`fusion.py`, `agents.md`).
-   - Commit 2: Unit test suite (`test_fusion.py`).
-2. Push branch `feature/risk-fusion-engine` to `origin`, open PR, and merge into `main`.
+1. **Make 2 meaningful, simple commits** on branch `feature/video-processor`:
+   - Commit 1: Video processor engine, requirements & documentation (`video_processor.py`, `requirements.txt`, `agents.md`).
+   - Commit 2: Video processor test suite (`test_video_processor.py`).
+2. Push branch `feature/video-processor` to `origin`, open PR, and merge into `main`.
 
 ### Next Backend Tasks for Shivendra:
-1. **Branch `feature/video-processor` (OpenCV Frame Ingestion):**
-   - Create `backend/screening/video_processor.py` for decoding `.mp4`/`.webm` clips, sampling frames at fixed FPS stride, and extracting face bounding crops.
-2. **Wire Live Pipeline to View:**
-   - Connect Telemetry, Fusion, and Video Processor into `POST /api/v1/screen/` and record results into `ScreeningSession`, `ChannelResult`, and `FusionResult` tables.
+1. **Branch `feature/wire-screening-api`:**
+   - Connect `VideoProcessor`, `TelemetryEngine`, `RiskFusionEngine`, and `ScreeningSession` into `POST /api/v1/screen/`.
+   - Video upload triggers real frame extraction, real telemetry inspection, real risk fusion, and writes real immutable `AuditLog` rows.
+   - For Spatial and Liveness channels, use clean heuristic baselines until Divya provides her trained `.pth` weights and MediaPipe EAR script.
 
 ### Checkpoints with Divya (Do NOT proceed until she delivers):
 - **Checkpoint 2 (The Brain Transplant):** Wait for Divya to push trained PyTorch `.pth` weights and model class to `ml/deepfake/` before integrating real CNN inference into Django `apps.py`.
