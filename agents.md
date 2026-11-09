@@ -1,117 +1,109 @@
-﻿# DeepShield — Agent Handover & System Directives
+# DeepShield — Agent Handover & System Directives
 
 > **Target Audience:** Future AI coding assistants, autonomous agents, and LLMs pair programming on the DeepShield repository.  
 > **Repository:** `DeepShield` (B.Tech Minor Research Project, ITM University Gwalior)  
-> **Last Updated:** Initial Project Setup (Phase 1)
+> **Authors & Roles:**  
+> - **Shivendra Singh Chauhan (User):** Backend Architecture, Django REST Framework, Persistence & Audit, Telemetry Heuristics, Risk Fusion Engine, Containerization & Serving.  
+> - **Divya:** ML Model Training (EfficientNet-B0 / Xception), Passive Liveness Module (MediaPipe Face Mesh + EAR), Grad-CAM Generation, React Dashboard Frontend.  
+> **Current Active Branch:** `feature/backend-dbs-models`  
+> **Remote Origin:** `https://github.com/Shivendras01/DeepShield.git`  
+> **Last Updated:** Database ORM & Persistence Layer Implementation
 
 ---
 
-## 1. Project Context & Objectives
+## 1. Project Context & Threat Model
 
-DeepShield is an academic research prototype focused on screening short video-KYC (Know Your Customer) sessions for two specific identity-fraud threats:
-
-1. **Facial Deepfakes & Synthetic Facial Manipulation:** Detecting generated or swapped faces using deep convolutional neural network feature representations.
+DeepShield is an academic research prototype focused on screening short video-KYC (Know Your Customer) sessions for two distinct attack vectors:
+1. **Facial Deepfakes & Synthetic Facial Manipulation:** Detecting generated or swapped faces using spatial CNN feature representations.
 2. **Video Injection & Presentation Attacks:** Detecting prerecorded, looped, or stream-injected video feeds delivered through virtual cameras or manipulated capture pipelines.
 
-### Critical System Boundaries & Disclaimers
+### Critical System Boundaries & Scope Guardrails
 When generating code, documentation, or responses, all agents **must strictly adhere** to these principles:
-- **Not a Full KYC Platform:** DeepShield is a screening and risk-scoring tool for reviewers; it does not perform complete customer onboarding, document verification (e.g., Aadhaar, PAN, Passport), or database identity matching.
-- **No Conclusive Identity Claims:** The system provides probabilistic risk scores (0–100) and evidentiary artifacts. It does **not** independently establish or certify legal identity.
-- **Passive Liveness Is Indicative, Not Conclusive:** Eye Aspect Ratio (EAR) and blink statistics provide evidence of human behavioral dynamics, but must never be framed as foolproof proof of a live subject.
-- **Client Telemetry Is Spoofable:** Device headers and browser stream telemetry can be intercepted and faked. They are corroborative signals, not infallible guarantees.
+- **Audio Deepfakes & Voice Cloning are OUT OF SCOPE:** Do NOT install audio processing libraries (`librosa`, `torchaudio`, `soundfile`). Audio is deferred to future roadmap phases.
+- **Decision Support System:** DeepShield is a screening and risk-scoring tool for reviewers (producing a 0–100 Fraud Risk Score with 4 risk bands: `LOW`, `GUARDED`, `ELEVATED`, `HIGH`). It does NOT certify legal identity or replace human compliance officers.
+- **Passive Liveness Is Indicative:** Eye Aspect Ratio (EAR) and blink statistics provide behavioral evidence, not absolute proof.
+- **Client Telemetry Is Spoofable:** Device headers and browser stream telemetry are corroborative signals, not hardware attestation.
 
 ---
 
-## 2. Strict Scope Restrictions
+## 2. Team Workflow & Git Conventions
 
-> [!IMPORTANT]
-> **Audio Deepfakes & Voice Cloning are OUT OF SCOPE.**
-> - Do **NOT** install audio processing libraries (e.g., `librosa`, `torchaudio`, `soundfile`).
-> - Do **NOT** add audio extraction steps, voice models, or speech analysis endpoints.
-> - DeepShield is strictly bounded to visual frame analysis, facial landmarks, and capture telemetry.
+The user strictly follows a professional feature-branch and atomic-commit workflow. **Never make monolithic 150k-line commits.**
 
----
+### Git Standard Operating Procedure:
+```bash
+# 1. Start a feature from latest main
+git switch main
+git pull --ff-only origin main
+git switch -c feature/<short-descriptive-name>
 
-## 3. Work Completed by Initializing Agent (Phase 1)
+# 2. Make granular, atomic commits per logical change
+git add <specific-file>
+git commit -m "feat(scope): concise description"
 
-The following foundational tasks have been executed and verified:
-
-1. **Directory Architecture:** Created the standardized project directory structure:
-   - `docs/`: System documentation, research notes, and architectural specifications.
-   - `ml/`: Modular ML subsystem containing:
-     - `ml/preprocessing/`: Frame extraction, face detection, cropping, and landmark extraction.
-     - `ml/training/`: Training pipelines, dataset loaders, and Colab training routines.
-     - `ml/evaluation/`: Metric computation (AUC-ROC, EER, accuracy, confusion matrix).
-     - `ml/deepfake/`: Channel 1 models (EfficientNet-B0 primary, Xception baseline).
-     - `ml/liveness/`: Channel 2 passive liveness (EAR, blink dynamics).
-     - `ml/telemetry/`: Channel 3 video-injection and virtual camera heuristics.
-     - `ml/fusion/`: Risk aggregation engine producing a normalized 0–100 score.
-     - `ml/explainability/`: Grad-CAM heatmap generation and EAR trace plotting.
-     - `ml/tests/`: Unit tests for ML submodules.
-   - `backend/`: Django REST Framework service layout.
-   - `frontend/`: React + Vite + TypeScript reviewer dashboard layout.
-   - `tests/`: End-to-end and cross-component integration test suite.
-2. **Core Documentation & Environment Files:**
-   - `README.md`: Complete academic project overview, three-channel architecture, technology stack, and repo tree.
-   - `.gitignore`: Robust ignore rules covering Python, PyTorch checkpoints, dataset video formats, Django artifacts, Node modules, and environment secrets.
-   - `.env.example`: Central configuration template for development and inference parameters.
-   - `agents.md`: This comprehensive agent-to-agent operational guide.
+# 3. Before merging or pushing
+git fetch origin
+git rebase origin/main
+git push -u origin feature/<short-descriptive-name>
+```
 
 ---
 
-## 4. Architectural Rules for Subsequent Agents
+## 3. Current Implementation Status
 
-Future agents modifying this codebase must observe the following constraints:
+### ✅ Step 1: The API Handshake (Completed & on `main`)
+- Django project scaffolded in `backend/` with `config` and app `screening`.
+- Permissive CORS configured for React frontend at `http://localhost:5173`.
+- `GET /api/v1/health/` online.
+- `POST /api/v1/screen/` dummy endpoint returns the complete 3-channel contract, risk score, risk band, and evidence URLs.
+- Placeholder mock evidence images generated in `backend/media/evidence/`.
+- Documented in `docs/api_contract.md`.
+- Initial root commit and handshake pushed to GitHub `origin/main`.
 
-### A. Channel Specifications
-- **Channel 1 (Spatial Deepfake):**
-  - Primary Model: `EfficientNet-B0` (lightweight, efficient parameter count for real-time inference).
-  - Baseline Model: `Xception` (for academic benchmarking).
-  - Do not substitute arbitrary architectures unless explicitly directed by the user.
-- **Channel 2 (Passive Liveness):**
-  - Based on facial landmarks (68 landmarks or MediaPipe Face Mesh), Eye Aspect Ratio (EAR), and temporal blink statistics.
-- **Channel 3 (Video Injection):**
-  - Evaluates capture telemetry, video container properties, frame timestamps/jitter, and browser media device metadata.
-
-### B. Risk Fusion Engine
-- The fusion engine will combine outputs from all three channels into a normalized risk score from `0` to `100` (higher score = higher assessed fraud risk).
-- **Rule:** Do not invent hardcoded final weights or thresholds prematurely. Fusion calibration must be informed by empirical validation against benchmark datasets.
-
-### C. Explainability Standards
-- Flagged frames should support **Grad-CAM** saliency maps.
-- Liveness outputs should generate temporal **EAR graphs**.
-- Diagnostic breakdowns must link directly to the underlying channel scores.
-
-### D. Coding & Tooling Standards
-- **Python / PyTorch:** Write modular, type-annotated code with docstrings. Keep data pipelines detached from API endpoints.
-- **Backend:** Django REST Framework for clean RESTful APIs and background job management.
-- **Frontend:** React with TypeScript and Vite. Emphasize responsive, clean UI design suited for compliance officers.
-- **Preserve Existing Work:** Never delete or overwrite existing user code without prior inspection and confirmation.
+### 🔄 Step 2: Persistence & Core Engines (In Progress)
+- **Database Models (`backend/screening/models.py`):**
+  - `ScreeningSession`: Session lifecycle (`PENDING`, `PROCESSING`, `COMPLETED`, `FAILED`), client identity, video metadata.
+  - `ChannelResult`: Independent pre-fusion scores for `SPATIAL`, `LIVENESS`, `TELEMETRY`.
+  - `FusionResult`: Combined 0–100 score, `LOW`/`GUARDED`/`ELEVATED`/`HIGH` risk bands, weights, and escalation status.
+  - `EvidenceArtifact`: SHA-256 verified references for Grad-CAM heatmaps and EAR plots.
+  - `ModelRegistry`: Model versioning and checkpoint hash tracking.
+  - `AuditLog`: Append-only, tamper-evident log with payload SHA-256 hashes.
+- **Django Admin (`backend/screening/admin.py`):** Registered with search, filters, and immutable audit logs.
+- **Migrations:** `0001_initial.py` generated and applied.
+- **Unit Tests (`backend/screening/tests.py`):** 4 tests covering API endpoints and full model lifecycle passing (`OK`).
 
 ---
 
-## 5. Development Roadmap for Future Phases
+## 4. Immediate Next Steps & Agent Roadmap
 
-Incoming agents should reference this roadmap when prompted by the user to proceed with subsequent phases:
+### Immediate Task (Current Turn):
+1. **Commit current database work atomicaly** on branch `feature/backend-dbs-models`:
+   - Commit 1: Models definition (`models.py`)
+   - Commit 2: Database migration (`0001_initial.py`)
+   - Commit 3: Django Admin registration (`admin.py`)
+   - Commit 4: Test suite (`tests.py`)
+   - Commit 5: Agent handover documentation (`agents.md`)
+2. Push branch `feature/backend-dbs-models` to `origin` and merge into `main`.
 
-| Phase | Title | Primary Objectives & Deliverables |
-| :--- | :--- | :--- |
-| **Phase 1** | **Project Setup** | *(Completed)* Directory layout, README, `.gitignore`, `.env.example`, `agents.md`. |
-| **Phase 2** | **ML Preprocessing** | Video frame extraction, face detection/alignment, facial landmark extraction utilities in `ml/preprocessing/`. |
-| **Phase 3** | **Channel 1 (Deepfake)** | EfficientNet-B0 and Xception model definition, training/fine-tuning scripts for Google Colab, checkpoint loaders in `ml/deepfake/`. |
-| **Phase 4** | **Channel 2 & 3** | EAR calculation and blink frequency tracking in `ml/liveness/`; telemetry anomaly detection in `ml/telemetry/`. |
-| **Phase 5** | **Fusion & Explainability** | Risk aggregation logic (0–100 score) in `ml/fusion/`; Grad-CAM overlay and EAR plotting in `ml/explainability/`. |
-| **Phase 6** | **Backend API** | Django REST Framework API for video upload, processing orchestrator, database models for KYC sessions in `backend/`. |
-| **Phase 7** | **Frontend Reviewer UI** | React + Vite + TypeScript dashboard displaying session details, risk gauges, video players, and Grad-CAM overlays in `frontend/`. |
-| **Phase 8** | **Integration & Evaluation** | Benchmark evaluation scripts, cross-channel validation, Docker Compose deployment setup. |
+### Next Backend Tasks for Shivendra (Independent Parallel Zone):
+1. **Branch `feature/telemetry-engine`:**
+   - Create `backend/screening/telemetry.py` (or `ml/telemetry/rules.py`).
+   - Implement virtual camera detection heuristics: driver blacklists (OBS Virtual Camera, ManyCam, vMix, XSplit, CamTwist), resolution profile checks, and frame timestamp jitter variance calculation.
+   - Unit tests for telemetry rule evaluations.
+2. **Branch `feature/risk-fusion-engine`:**
+   - Create `backend/screening/fusion.py`.
+   - Implement normalized 0–100 scoring: $S = 100 \times (w_t s_t + w_l s_l + w_s s_s)$.
+   - Implement rule-based escalation logic (e.g., if virtual camera detected $\rightarrow$ escalate risk band to `HIGH`).
+3. **OpenCV Video Ingestion Pipeline:**
+   - Implement frame extractor and face cropping utility (`backend/screening/video_processor.py`) using OpenCV.
+
+### Checkpoints with Divya (Do NOT proceed until she delivers):
+- **Checkpoint 2 (The Brain Transplant):** Wait for Divya to push trained PyTorch `.pth` weights and model class to `ml/deepfake/` before integrating real CNN inference into Django `apps.py`.
+- **Checkpoint 3 (Explainability):** Wait for Divya to push Grad-CAM generator script before saving heatmap artifacts.
 
 ---
 
-## 6. Pre-Flight Checklist for Incoming AI Models
-
-Before submitting any code changes, verify:
-- [ ] Are you only implementing what the user explicitly requested for the current turn?
-- [ ] Is audio processing completely absent from the proposed solution?
-- [ ] Are models and weights structured to load from configurable paths (`MODEL_WEIGHTS_DIR`)?
-- [ ] Are all new files located within the correct subdirectories in `DeepShield/`?
-- [ ] Have you preserved all existing code, comments, and structure?
+## 5. Architectural Invariants
+1. **Never read across channels:** Spatial, Liveness, and Telemetry channels must be isolated and produce independent scores before reaching the Fusion Engine.
+2. **Audit trails are append-only:** Never update or delete `AuditLog` rows.
+3. **Keep models decoupled from views:** Inference logic should live in modular service classes (`ml/` or `screening/services/`), not embedded inside Django view functions.
