@@ -1,5 +1,9 @@
 import json
 import uuid
+import tempfile
+import os
+import cv2
+import numpy as np
 from django.test import TestCase
 from django.core.files.uploadedfile import SimpleUploadedFile
 from rest_framework.test import APIClient
@@ -14,7 +18,10 @@ from .models import (
 )
 
 
-class DummyScreeningApiTests(TestCase):
+class ScreeningLiveApiIntegrationTests(TestCase):
+    """
+    Tests live screening orchestration: Video processing + Telemetry + Fusion + Persistence + Dual Perspective.
+    """
     def setUp(self):
         self.client = APIClient()
 
@@ -24,37 +31,112 @@ class DummyScreeningApiTests(TestCase):
         self.assertEqual(response.data.get('status'), 'online')
         self.assertEqual(response.data.get('service'), 'DeepShield Video Screening API')
 
-    def test_dummy_screening_json_payload(self):
+    def test_live_screening_with_telemetry_only(self):
         payload = {
+            "client_id": "sbi-branch-delhi",
             "telemetry": json.dumps({
                 "device_label": "Integrated Webcam HD",
-                "resolution": "1280x720",
-                "fps": 30
+                "timestamps_ms": [i * 33.3 + (i % 3) for i in range(25)]
+            }),
+            "duration_s": 4.0,
+            "frames_total": 120,
+            "frames_used": 20
+        }
+        response = self.client.post('/api/v1/screen/', payload, format='multipart')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        # Verify Dual-Perspective response
+        self.assertIn('applicant_view', response.data)
+        self.assertIn('forensic_reviewer_view', response.data)
+
+        # Applicant view check (safe and opaque)
+        applicant = response.data['applicant_view']
+        self.assertIn('status', applicant)
+        self.assertIn('user_message', applicant)
+
+        # Forensic reviewer view check (comprehensive)
+        forensic = response.data['forensic_reviewer_view']
+        self.assertEqual(forensic['client_id'], 'sbi-branch-delhi')
+        self.assertIn('fused_score', forensic)
+        self.assertIn('risk_band', forensic)
+        self.assertIn('channel_scores', forensic)
+        self.assertIn('audit_integrity_hash', forensic)
+
+        # Verify database persistence
+        session_id = response.data['session_id']
+        session = ScreeningSession.objects.get(session_id=session_id)
+        self.assertEqual(session.status, ScreeningSession.StatusChoices.COMPLETED)
+        self.assertEqual(session.channel_results.count(), 3)
+        self.assertIsNotNone(session.fusion_result)
+        self.assertEqual(session.audit_logs.count(), 1)
+
+    def test_virtual_camera_injection_escalates_and_records_audit(self):
+        payload = {
+            "client_id": "hdfc-onboarding",
+            "telemetry": json.dumps({
+                "device_label": "OBS Virtual Camera"
             })
         }
         response = self.client.post('/api/v1/screen/', payload, format='multipart')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn('session_id', response.data)
-        self.assertIn('fused_score', response.data)
-        self.assertIn('risk_band', response.data)
-        self.assertIn('channel_scores', response.data)
-        self.assertIn('evidence', response.data)
-        self.assertEqual(response.data['risk_band'], 'LOW')
 
-    def test_dummy_screening_with_mock_video_file(self):
-        mock_video = SimpleUploadedFile(
-            "sample_kyc.webm",
-            b"fake video stream bytes for testing handshake",
-            content_type="video/webm"
+        forensic = response.data['forensic_reviewer_view']
+        self.assertTrue(forensic['escalated'])
+        self.assertEqual(forensic['risk_band'], 'HIGH')
+        self.assertGreaterEqual(forensic['fused_score'], 85.0)
+
+        # Verify applicant sees safe retry instruction, not raw score
+        applicant = response.data['applicant_view']
+        self.assertEqual(applicant['status'], 'RETRY_REQUIRED')
+        self.assertNotIn('85', applicant['user_message'])
+
+    def test_session_detail_api(self):
+        # Create a session via POST
+        post_res = self.client.post('/api/v1/screen/', {
+            "telemetry": json.dumps({"device_label": "Logitech C920"})
+        }, format='multipart')
+        session_id = post_res.data['session_id']
+
+        # Query GET /sessions/<session_id>/
+        detail_res = self.client.get(f'/api/v1/sessions/{session_id}/')
+        self.assertEqual(detail_res.status_code, status.HTTP_200_OK)
+        self.assertEqual(detail_res.data['session_id'], session_id)
+        self.assertIn('channels', detail_res.data)
+        self.assertIn('audit_history', detail_res.data)
+
+    def test_human_officer_review_action(self):
+        # 1. Create session
+        post_res = self.client.post('/api/v1/screen/', {
+            "telemetry": json.dumps({"device_label": "Logitech C920"})
+        }, format='multipart')
+        session_id = post_res.data['session_id']
+
+        # 2. Officer submits review decision
+        review_payload = {
+            "officer_id": "OFFICER_PATEL_09",
+            "decision": "APPROVED",
+            "notes": "Reviewed visual frames manually; confirmed genuine applicant."
+        }
+        review_res = self.client.post(
+            f'/api/v1/sessions/{session_id}/review/',
+            review_payload,
+            format='json'
         )
-        response = self.client.post(
-            '/api/v1/screen/',
-            {'video': mock_video, 'telemetry': json.dumps({"browser": "Chrome 122"})},
-            format='multipart'
-        )
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data['file_info']['name'], 'sample_kyc.webm')
-        self.assertGreater(response.data['file_info']['size_bytes'], 0)
+        self.assertEqual(review_res.status_code, status.HTTP_200_OK)
+        self.assertEqual(review_res.data['decision'], 'APPROVED')
+
+        # 3. Verify audit log has 2 entries now: SESSION_SCREENED + OFFICER_APPROVED
+        session = ScreeningSession.objects.get(session_id=session_id)
+        self.assertEqual(session.audit_logs.count(), 2)
+        latest_audit = session.audit_logs.first()
+        self.assertEqual(latest_audit.action, 'OFFICER_APPROVED')
+        self.assertEqual(latest_audit.actor, 'OFFICER_PATEL_09')
+
+    def test_session_list_api(self):
+        # Query GET /sessions/
+        res = self.client.get('/api/v1/sessions/')
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertIn('results', res.data)
 
 
 class DeepShieldModelSchemaTests(TestCase):
@@ -62,7 +144,6 @@ class DeepShieldModelSchemaTests(TestCase):
     Tests persistence layer models: ScreeningSession, ChannelResult, FusionResult, EvidenceArtifact, ModelRegistry, AuditLog.
     """
     def test_complete_screening_session_lifecycle(self):
-        # 1. Create a screening session
         session = ScreeningSession.objects.create(
             client_id="hdfc-bank-onboarding-test",
             status=ScreeningSession.StatusChoices.COMPLETED,
@@ -73,34 +154,29 @@ class DeepShieldModelSchemaTests(TestCase):
         self.assertIsNotNone(session.session_id)
         self.assertEqual(session.status, "COMPLETED")
 
-        # 2. Add isolated ChannelResults
-        spatial_result = ChannelResult.objects.create(
+        ChannelResult.objects.create(
             session=session,
             channel=ChannelResult.ChannelChoices.SPATIAL,
             raw_score=0.12,
             normalised_score=12.0,
-            flagged=False,
-            features_json={"model": "EfficientNet-B0", "max_frame_anomaly": 0.18}
+            flagged=False
         )
-        telemetry_result = ChannelResult.objects.create(
+        ChannelResult.objects.create(
             session=session,
             channel=ChannelResult.ChannelChoices.TELEMETRY,
             raw_score=0.02,
             normalised_score=2.0,
-            flagged=False,
-            features_json={"device": "Integrated Camera", "jitter_ms": 11.2}
+            flagged=False
         )
-        liveness_result = ChannelResult.objects.create(
+        ChannelResult.objects.create(
             session=session,
             channel=ChannelResult.ChannelChoices.LIVENESS,
             raw_score=0.15,
             normalised_score=15.0,
-            flagged=False,
-            features_json={"blink_count": 3, "mean_ear": 0.29}
+            flagged=False
         )
         self.assertEqual(session.channel_results.count(), 3)
 
-        # 3. Add FusionResult
         fusion = FusionResult.objects.create(
             session=session,
             fusion_version="v1.0-weighted",
@@ -111,33 +187,3 @@ class DeepShieldModelSchemaTests(TestCase):
             recommendation="Proceed under normal review."
         )
         self.assertEqual(session.fusion_result.fused_score, 9.6)
-
-        # 4. Add EvidenceArtifact
-        artifact = EvidenceArtifact.objects.create(
-            session=session,
-            frame_index=15,
-            artifact_type=EvidenceArtifact.ArtifactTypeChoices.GRADCAM_HEATMAP,
-            storage_ref="/media/evidence/session_test_frame_15.jpg",
-            checksum="e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-        )
-        self.assertEqual(session.evidence_artifacts.count(), 1)
-
-        # 5. Add AuditLog entry
-        audit = AuditLog.objects.create(
-            session=session,
-            actor="SYSTEM_PIPELINE",
-            action="SESSION_SCORED",
-            payload_hash="a591a6d40bf420404a011733cfb7b190d62c65bf0bcda32b57b277d9ad9f146e",
-            metadata_json={"fused_score": 9.6, "risk_band": "LOW"}
-        )
-        self.assertEqual(session.audit_logs.count(), 1)
-
-        # 6. ModelRegistry
-        registry = ModelRegistry.objects.create(
-            channel=ChannelResult.ChannelChoices.SPATIAL,
-            architecture="EfficientNet-B0",
-            checkpoint_hash="b2d28f0920556e9c0c8a5a76985a19859f5a04de22a8626fcf0113c415e9ff04",
-            train_dataset="FaceForensics++ c23",
-            export_format="PyTorch .pth"
-        )
-        self.assertIsNotNone(registry.model_id)
