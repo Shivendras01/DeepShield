@@ -8,6 +8,7 @@ import uuid
 import hashlib
 import tempfile
 from datetime import datetime, timezone
+from django.conf import settings
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
@@ -23,12 +24,14 @@ from .models import (
 from .telemetry import TelemetryEngine
 from .fusion import RiskFusionEngine
 from .video_processor import VideoProcessor
+from .liveness import LivenessAnalyzer
 
 
 # Initialize Singleton Engines
 telemetry_engine = TelemetryEngine()
 fusion_engine = RiskFusionEngine()
 video_processor = VideoProcessor(target_sample_fps=5.0, crop_margin=0.20)
+liveness_analyzer = LivenessAnalyzer()
 
 
 class HealthCheckView(APIView):
@@ -42,6 +45,7 @@ class HealthCheckView(APIView):
             "version": "1.0.0",
             "channels": ["spatial_deepfake", "passive_liveness", "stream_telemetry"],
             "fusion_engine": fusion_engine.version,
+            "mediapipe_liveness": liveness_analyzer.mediapipe_available,
             "timestamp": datetime.now(timezone.utc).isoformat()
         }, status=status.HTTP_200_OK)
 
@@ -50,7 +54,7 @@ class ScreeningLiveApiView(APIView):
     """
     Live video screening endpoint.
     Accepts video file upload and client capture telemetry.
-    Orchestrates frame extraction, telemetry inspection, multi-channel scoring,
+    Orchestrates frame extraction, telemetry inspection, passive liveness analysis,
     risk fusion, and append-only audit persistence.
     Returns Dual-Perspective payload (Applicant View + Forensic Reviewer View).
     """
@@ -78,6 +82,7 @@ class ScreeningLiveApiView(APIView):
         frames_total = 0
         frames_used = 0
         faces_detected = 0
+        ear_plot_url = "/media/evidence/mock_ear_plot.png"
 
         # Create the initial ScreeningSession (status = PROCESSING)
         session = ScreeningSession.objects.create(
@@ -101,30 +106,44 @@ class ScreeningLiveApiView(APIView):
                 frames_total = meta.get("total_frames", 0)
                 frames_used = meta.get("frames_sampled", 0)
                 faces_detected = meta.get("faces_detected", 0)
+                sampled_frames = proc_result.get("sampled_frames", [])
+
+                # Run Passive Liveness Analysis on extracted frames
+                ear_plot_filename = f"ear_{session.session_id}.png"
+                ear_plot_dir = os.path.join(settings.MEDIA_ROOT, "evidence")
+                os.makedirs(ear_plot_dir, exist_ok=True)
+                ear_plot_path = os.path.join(ear_plot_dir, ear_plot_filename)
+
+                liveness_eval = liveness_analyzer.analyze_sequence(
+                    frames_rgb=sampled_frames,
+                    duration_s=duration_s,
+                    plot_output_path=ear_plot_path
+                )
+                liveness_score = liveness_eval["normalised_score"]
+                liveness_notes = liveness_eval["notes"]
+                if os.path.exists(ear_plot_path):
+                    ear_plot_url = f"{settings.MEDIA_URL}evidence/{ear_plot_filename}"
+
             else:
                 # Fallback for synthetic/telemetry-only test requests
                 duration_s = float(request.data.get("duration_s", 3.5))
                 frames_total = int(request.data.get("frames_total", 105))
                 frames_used = int(request.data.get("frames_used", 18))
                 faces_detected = int(request.data.get("faces_detected", 18))
+                liveness_score = float(request.data.get("liveness_score", 10.0))
+                liveness_notes = "Natural physiological dynamics and blink patterns consistent with live human."
 
             # 3. Channel 3: Evaluate Telemetry
             telemetry_eval = telemetry_engine.evaluate(telemetry_data)
             telemetry_score = telemetry_eval["normalised_score"]
 
-            # 4. Baseline / Extracted Heuristics for Spatial & Liveness (Prior to model weights plug-in)
-            # If no faces were detected in the video, that is an inherent anomaly
+            # 4. Spatial Deepfake Detection
             if frames_used > 0 and faces_detected == 0:
                 spatial_score = 75.0
-                liveness_score = 80.0
                 spatial_notes = "Face detection failed across all extracted frames."
-                liveness_notes = "No valid facial landmarks could be isolated for EAR tracking."
             else:
-                # Nominal baseline scores for clean capture; will be replaced by real model inferences
                 spatial_score = float(request.data.get("spatial_score", 12.0))
-                liveness_score = float(request.data.get("liveness_score", 10.0))
                 spatial_notes = f"Verified {faces_detected} face crops; no synthetic blending anomalies."
-                liveness_notes = "Natural physiological dynamics and blink patterns consistent with live human."
 
             # 5. Risk Fusion Engine
             fusion_output = fusion_engine.fuse(
@@ -198,7 +217,6 @@ class ScreeningLiveApiView(APIView):
             )
 
             # 7. Formulate Dual-Perspective Response
-            # Applicant View (Customer Safe & Opaque)
             risk_band = fusion_output["risk_band"]
             if risk_band == "LOW":
                 applicant_status = "APPROVED"
@@ -216,7 +234,6 @@ class ScreeningLiveApiView(APIView):
                 "session_id": str(session.session_id)
             }
 
-            # Forensic Reviewer View (Bank Compliance Portal)
             forensic_view = {
                 "session_id": str(session.session_id),
                 "client_id": session.client_id,
@@ -253,7 +270,7 @@ class ScreeningLiveApiView(APIView):
                 "channel_contributions": fusion_output["channel_contributions"],
                 "evidence": {
                     "gradcam_url": "/media/evidence/mock_gradcam.jpg",
-                    "ear_plot_url": "/media/evidence/mock_ear_plot.png"
+                    "ear_plot_url": ear_plot_url
                 },
                 "audit_integrity_hash": payload_hash
             }
@@ -277,7 +294,6 @@ class ScreeningLiveApiView(APIView):
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         finally:
-            # Clean up temporary uploaded file
             if temp_video_path and os.path.exists(temp_video_path):
                 try:
                     os.remove(temp_video_path)
@@ -355,11 +371,9 @@ class SessionReviewActionApiView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # Update session status
         session.status = ScreeningSession.StatusChoices.COMPLETED if decision == "APPROVED" else ScreeningSession.StatusChoices.FAILED
         session.save()
 
-        # Write immutable human override log
         review_payload = {
             "session_id": str(session.session_id),
             "decision": decision,
