@@ -3,11 +3,11 @@
 > **Target Audience:** Future AI coding assistants, autonomous agents, and LLMs pair programming on the DeepShield repository.  
 > **Repository:** `DeepShield` (B.Tech Minor Research Project, ITM University Gwalior)  
 > **Authors & Roles:**  
-> - **Shivendra Singh Chauhan (User):** Backend Architecture, Django REST Framework, Persistence & Audit, Telemetry Heuristics, Risk Fusion Engine, Video Pipeline & Serving.  
-> - **Divya:** ML Model Training (EfficientNet-B0 / Xception), Passive Liveness Module (MediaPipe Face Mesh + EAR), Grad-CAM Generation, React Dashboard Frontend.  
-> **Current Active Branch:** `feature/video-processor`  
+> - **Shivendra Singh Chauhan (User):** Backend Architecture, System Engineering, Full-Stack Delivery, Video Pipeline, Risk Fusion, Telemetry & Serving.  
+> - **Divya (Project Partner):** Project Co-author (Machine Learning & Research). Due to hardware unavailability, Shivendra + Antigravity are implementing all modules end-to-end.  
+> **Current Active Branch:** `feature/wire-screening-api`  
 > **Remote Origin:** `https://github.com/Shivendras01/DeepShield.git`  
-> **Last Updated:** OpenCV Video Ingestion Pipeline & Face Cropping Implementation
+> **Last Updated:** Live Screening Pipeline Orchestration & Dual-Perspective API Delivery
 
 ---
 
@@ -20,8 +20,8 @@ DeepShield is an academic research prototype focused on screening short video-KY
 ### Critical System Boundaries & Scope Guardrails
 When generating code, documentation, or responses, all agents **must strictly adhere** to these principles:
 - **Audio Deepfakes & Voice Cloning are OUT OF SCOPE:** Do NOT install audio processing libraries (`librosa`, `torchaudio`, `soundfile`). Audio is deferred to future roadmap phases.
-- **Decision Support System:** DeepShield is a screening and risk-scoring tool for reviewers (producing a 0–100 Fraud Risk Score with 4 risk bands: `LOW`, `GUARDED`, `ELEVATED`, `HIGH`). It does NOT certify legal identity or replace human compliance officers.
-- **Passive Liveness Is Indicative:** Eye Aspect Ratio (EAR) and blink statistics provide behavioral evidence, not absolute proof.
+- **Decision Support System:** DeepShield is an internal screening and decision-support tool for banking compliance officers (producing a 0–100 Fraud Risk Score with 4 risk bands: `LOW`, `GUARDED`, `ELEVATED`, `HIGH`). It does NOT certify legal identity or replace human officers.
+- **Dual-Perspective API Security:** Never expose internal risk scores, Grad-CAM heatmaps, or technical heuristics directly to applicants/untrusted clients (preventing adversarial oracle attacks). The API returns two distinct payloads: `applicant_view` (safe and opaque) and `forensic_reviewer_view` (internal compliance portal).
 - **Client Telemetry Is Spoofable:** Device headers and browser stream telemetry are corroborative signals, not hardware attestation.
 
 ---
@@ -55,8 +55,6 @@ git push -u origin feature/<short-descriptive-name>
 - Django project scaffolded in `backend/` with `config` and app `screening`.
 - Permissive CORS configured for React frontend at `http://localhost:5173`.
 - `GET /api/v1/health/` online.
-- `POST /api/v1/screen/` dummy endpoint returns the complete 3-channel contract, risk score, risk band, and evidence URLs.
-- Placeholder mock evidence images generated in `backend/media/evidence/`.
 - Documented in `docs/api_contract.md`.
 - Initial root commit and handshake pushed to GitHub `origin/main`.
 
@@ -80,34 +78,40 @@ git push -u origin feature/<short-descriptive-name>
 ### ✅ Step 2C: Risk Fusion Engine (Merged into `main` via PR #2)
 - **Risk Fusion Engine (`backend/screening/fusion.py`):**
   - Calculates weighted combination: $S = 100 \times (0.50 s_s + 0.30 s_l + 0.20 s_t)$.
-  - Implements **rule-based categorical escalation** (virtual camera detection, high-confidence deepfake manipulation, severe liveness failure, or multi-channel corroboration) to prevent single strong threats from being diluted.
+  - Implements **rule-based categorical escalation** (virtual camera detection, high-confidence deepfake manipulation, severe liveness failure, or multi-channel corroboration).
   - Maps to 4 risk tiers (`LOW`, `GUARDED`, `ELEVATED`, `HIGH`) and actionable reviewer advice.
 
-### 🔄 Step 2D: Video Processing Pipeline (Current Branch: `feature/video-processor`)
+### ✅ Step 2D: Video Processing Pipeline (Merged into `main` via PR #3)
 - **Video Processor (`backend/screening/video_processor.py`):**
   - Opens and inspects `.mp4`/`.webm` streams (fps, duration, frame counts).
   - Performs controlled frame sampling at a configurable stride (target 5 FPS).
   - Detects faces with OpenCV and crops with a 20% margin to preserve blending boundaries.
   - Resizes crops to $224 \times 224$ uint8 for downstream EfficientNet-B0 inference.
-- **Unit Tests (`backend/screening/test_video_processor.py`):** 4 test suites verifying metadata extraction, stride sampling, crop dimensions, and error handling.
-- All 18 screening tests passing (`OK`).
+
+### 🔄 Step 2E: Live Screening API & Reviewer Workflow (Current Branch: `feature/wire-screening-api`)
+- **Live Pipeline View (`backend/screening/views.py`):**
+  - Orchestrates video decoding $\rightarrow$ telemetry inspection $\rightarrow$ risk fusion $\rightarrow$ database persistence.
+  - Writes records to `ScreeningSession`, `ChannelResult` (x3), `FusionResult`, and immutable `AuditLog` with SHA-256 payload hashes.
+  - Dual-Perspective response payload: `applicant_view` (opaque status) + `forensic_reviewer_view` (internal review portal).
+- **Human-in-the-Loop Review Endpoints:**
+  - `GET /api/v1/sessions/`: Session review queue.
+  - `GET /api/v1/sessions/<id>/`: Full historical forensic report.
+  - `POST /api/v1/sessions/<id>/review/`: Bank officer approval/rejection action logging.
+- **Unit & Integration Tests (`backend/screening/tests.py`):** 21 passing tests (`OK`).
 
 ---
 
-## 4. Immediate Next Steps & Agent Roadmap
+## 4. Master Development Roadmap (Next Steps)
 
-### Immediate Task (Current Turn):
-1. **Make 2 meaningful, simple commits** on branch `feature/video-processor`:
-   - Commit 1: Video processor engine, requirements & documentation (`video_processor.py`, `requirements.txt`, `agents.md`).
-   - Commit 2: Video processor test suite (`test_video_processor.py`).
-2. Push branch `feature/video-processor` to `origin`, open PR, and merge into `main`.
+With the backend fully wired, we proceed with the standalone detection modules and the React frontend:
 
-### Next Backend Tasks for Shivendra:
-1. **Branch `feature/wire-screening-api`:**
-   - Connect `VideoProcessor`, `TelemetryEngine`, `RiskFusionEngine`, and `ScreeningSession` into `POST /api/v1/screen/`.
-   - Video upload triggers real frame extraction, real telemetry inspection, real risk fusion, and writes real immutable `AuditLog` rows.
-   - For Spatial and Liveness channels, use clean heuristic baselines until Divya provides her trained `.pth` weights and MediaPipe EAR script.
-
-### Checkpoints with Divya (Do NOT proceed until she delivers):
-- **Checkpoint 2 (The Brain Transplant):** Wait for Divya to push trained PyTorch `.pth` weights and model class to `ml/deepfake/` before integrating real CNN inference into Django `apps.py`.
-- **Checkpoint 3 (Explainability):** Wait for Divya to push Grad-CAM generator script before saving heatmap artifacts.
+1. **Branch `feature/passive-liveness`:**
+   - Install `mediapipe` (or lightweight landmark geometry extractor).
+   - Implement `backend/screening/liveness.py` (calculating Eye Aspect Ratio over frames, blink counts, blink frequency, and generating the EAR time-series curve).
+2. **Branch `feature/spatial-deepfake-gradcam`:**
+   - Implement `backend/screening/deepfake.py` using PyTorch `EfficientNet-B0`.
+   - Implement `backend/screening/gradcam.py` to extract saliency heatmaps on flagged face crops and save them to `media/evidence/`.
+3. **Branch `feature/frontend-dashboard`:**
+   - Initialize `frontend/` with Vite, React, and Tailwind CSS.
+   - Build View A: Applicant Webcam KYC capture screen.
+   - Build View B: Bank Officer Forensic Audit Dashboard (0–100 Risk Gauge, Grad-CAM viewer, EAR curve, Audit trail, Approve/Reject buttons).
