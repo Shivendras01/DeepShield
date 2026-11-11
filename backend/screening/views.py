@@ -25,6 +25,8 @@ from .telemetry import TelemetryEngine
 from .fusion import RiskFusionEngine
 from .video_processor import VideoProcessor
 from .liveness import LivenessAnalyzer
+from .deepfake import SpatialDeepfakeDetector
+from .gradcam import GradCAMGenerator
 
 
 # Initialize Singleton Engines
@@ -32,6 +34,8 @@ telemetry_engine = TelemetryEngine()
 fusion_engine = RiskFusionEngine()
 video_processor = VideoProcessor(target_sample_fps=5.0, crop_margin=0.20)
 liveness_analyzer = LivenessAnalyzer()
+deepfake_detector = SpatialDeepfakeDetector(device="cpu")
+gradcam_generator = GradCAMGenerator(deepfake_detector.model)
 
 
 class HealthCheckView(APIView):
@@ -46,6 +50,8 @@ class HealthCheckView(APIView):
             "channels": ["spatial_deepfake", "passive_liveness", "stream_telemetry"],
             "fusion_engine": fusion_engine.version,
             "mediapipe_liveness": liveness_analyzer.mediapipe_available,
+            "spatial_model": "EfficientNet-B0",
+            "custom_checkpoint_loaded": deepfake_detector.is_custom_checkpoint,
             "timestamp": datetime.now(timezone.utc).isoformat()
         }, status=status.HTTP_200_OK)
 
@@ -55,7 +61,7 @@ class ScreeningLiveApiView(APIView):
     Live video screening endpoint.
     Accepts video file upload and client capture telemetry.
     Orchestrates frame extraction, telemetry inspection, passive liveness analysis,
-    risk fusion, and append-only audit persistence.
+    spatial deepfake CNN inference, Grad-CAM generation, and risk fusion.
     Returns Dual-Perspective payload (Applicant View + Forensic Reviewer View).
     """
     parser_classes = [MultiPartParser, FormParser, JSONParser]
@@ -83,6 +89,7 @@ class ScreeningLiveApiView(APIView):
         frames_used = 0
         faces_detected = 0
         ear_plot_url = "/media/evidence/mock_ear_plot.png"
+        gradcam_url = "/media/evidence/mock_gradcam.jpg"
 
         # Create the initial ScreeningSession (status = PROCESSING)
         session = ScreeningSession.objects.create(
@@ -107,13 +114,14 @@ class ScreeningLiveApiView(APIView):
                 frames_used = meta.get("frames_sampled", 0)
                 faces_detected = meta.get("faces_detected", 0)
                 sampled_frames = proc_result.get("sampled_frames", [])
+                face_crops = proc_result.get("face_crops", [])
 
-                # Run Passive Liveness Analysis on extracted frames
+                evidence_dir = os.path.join(settings.MEDIA_ROOT, "evidence")
+                os.makedirs(evidence_dir, exist_ok=True)
+
+                # Channel 2: Passive Liveness Analysis & Dynamic EAR Plot
                 ear_plot_filename = f"ear_{session.session_id}.png"
-                ear_plot_dir = os.path.join(settings.MEDIA_ROOT, "evidence")
-                os.makedirs(ear_plot_dir, exist_ok=True)
-                ear_plot_path = os.path.join(ear_plot_dir, ear_plot_filename)
-
+                ear_plot_path = os.path.join(evidence_dir, ear_plot_filename)
                 liveness_eval = liveness_analyzer.analyze_sequence(
                     frames_rgb=sampled_frames,
                     duration_s=duration_s,
@@ -124,6 +132,25 @@ class ScreeningLiveApiView(APIView):
                 if os.path.exists(ear_plot_path):
                     ear_plot_url = f"{settings.MEDIA_URL}evidence/{ear_plot_filename}"
 
+                # Channel 1: Spatial Deepfake Analysis & Dynamic Grad-CAM Saliency
+                if face_crops and faces_detected > 0:
+                    spatial_eval = deepfake_detector.predict(face_crops)
+                    spatial_score = spatial_eval["normalised_score"]
+                    spatial_notes = spatial_eval["notes"]
+
+                    # Generate Grad-CAM on highest-risk crop
+                    highest_idx = spatial_eval.get("highest_risk_frame_idx", 0)
+                    flagged_crop = face_crops[highest_idx] if highest_idx < len(face_crops) else face_crops[0]
+
+                    gradcam_filename = f"gradcam_{session.session_id}.jpg"
+                    gradcam_path = os.path.join(evidence_dir, gradcam_filename)
+                    gradcam_generator.generate(flagged_crop, gradcam_path)
+                    if os.path.exists(gradcam_path):
+                        gradcam_url = f"{settings.MEDIA_URL}evidence/{gradcam_filename}"
+                else:
+                    spatial_score = 75.0
+                    spatial_notes = "Face detection failed across all extracted frames."
+
             else:
                 # Fallback for synthetic/telemetry-only test requests
                 duration_s = float(request.data.get("duration_s", 3.5))
@@ -132,20 +159,14 @@ class ScreeningLiveApiView(APIView):
                 faces_detected = int(request.data.get("faces_detected", 18))
                 liveness_score = float(request.data.get("liveness_score", 10.0))
                 liveness_notes = "Natural physiological dynamics and blink patterns consistent with live human."
+                spatial_score = float(request.data.get("spatial_score", 12.0))
+                spatial_notes = f"Verified {faces_detected} face crops; no synthetic blending anomalies."
 
             # 3. Channel 3: Evaluate Telemetry
             telemetry_eval = telemetry_engine.evaluate(telemetry_data)
             telemetry_score = telemetry_eval["normalised_score"]
 
-            # 4. Spatial Deepfake Detection
-            if frames_used > 0 and faces_detected == 0:
-                spatial_score = 75.0
-                spatial_notes = "Face detection failed across all extracted frames."
-            else:
-                spatial_score = float(request.data.get("spatial_score", 12.0))
-                spatial_notes = f"Verified {faces_detected} face crops; no synthetic blending anomalies."
-
-            # 5. Risk Fusion Engine
+            # 4. Risk Fusion Engine
             fusion_output = fusion_engine.fuse(
                 spatial_score=spatial_score,
                 liveness_score=liveness_score,
@@ -153,7 +174,7 @@ class ScreeningLiveApiView(APIView):
                 telemetry_meta=telemetry_eval
             )
 
-            # 6. Database Persistence
+            # 5. Database Persistence
             session.duration_s = duration_s
             session.frames_total = frames_total
             session.frames_used = frames_used
@@ -216,7 +237,7 @@ class ScreeningLiveApiView(APIView):
                 metadata_json=audit_payload
             )
 
-            # 7. Formulate Dual-Perspective Response
+            # 6. Formulate Dual-Perspective Response
             risk_band = fusion_output["risk_band"]
             if risk_band == "LOW":
                 applicant_status = "APPROVED"
@@ -269,7 +290,7 @@ class ScreeningLiveApiView(APIView):
                 },
                 "channel_contributions": fusion_output["channel_contributions"],
                 "evidence": {
-                    "gradcam_url": "/media/evidence/mock_gradcam.jpg",
+                    "gradcam_url": gradcam_url,
                     "ear_plot_url": ear_plot_url
                 },
                 "audit_integrity_hash": payload_hash
