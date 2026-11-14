@@ -32,9 +32,18 @@ export const api = {
       method: 'POST',
       body: formData,
     });
-    const data = await res.json();
+    
+    let data;
+    const contentType = res.headers.get('content-type') || '';
+    if (contentType.includes('application/json')) {
+      data = await res.json();
+    } else {
+      const text = await res.text();
+      throw new Error(`Backend server error (${res.status}): Please check backend logs.`);
+    }
+
     if (!res.ok) {
-      throw new Error(data.error || data.detail || 'Screening request failed');
+      throw new Error(data.error || data.detail || `Screening request failed with status ${res.status}`);
     }
     return data;
   },
@@ -43,7 +52,8 @@ export const api = {
   async getSessions() {
     const res = await fetch(`${API_BASE_URL}/sessions/`);
     if (!res.ok) throw new Error('Failed to fetch session queue');
-    return await res.json();
+    const data = await res.json();
+    return Array.isArray(data) ? data : (data.results || data.sessions || []);
   },
 
   // Get full forensic dossier for a session

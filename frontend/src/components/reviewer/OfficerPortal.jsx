@@ -29,9 +29,11 @@ export default function OfficerPortal({ initialSessionId }) {
     setError(null);
     try {
       const data = await api.getSessions();
-      setSessions(data.sessions || data || []);
+      const list = Array.isArray(data) ? data : (data?.results || data?.sessions || []);
+      setSessions(list);
     } catch (err) {
       setError(err.message || 'Failed to load session queue.');
+      setSessions([]);
     } finally {
       setIsLoading(false);
     }
@@ -63,7 +65,8 @@ export default function OfficerPortal({ initialSessionId }) {
   };
 
   // Filter logic
-  const filteredSessions = sessions.filter((s) => {
+  const sessionList = Array.isArray(sessions) ? sessions : [];
+  const filteredSessions = sessionList.filter((s) => {
     const score = s.fusion_score ?? s.composite_score ?? 0;
     const band = s.risk_band || 'LOW';
     if (filter === 'REQUIRES_REVIEW') return band === 'GUARDED' || band === 'ELEVATED' || (score >= 25 && score < 75);

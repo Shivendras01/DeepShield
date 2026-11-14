@@ -50,20 +50,24 @@ class VideoProcessor:
         if not os.path.exists(video_path):
             raise FileNotFoundError(f"Video file not found at: {video_path}")
 
+        # Try default backend first, then fall back to FFMPEG (essential on Windows for webm streams)
         cap = cv2.VideoCapture(video_path)
+        if not cap.isOpened():
+            cap = cv2.VideoCapture(video_path, cv2.CAP_FFMPEG)
         if not cap.isOpened():
             raise ValueError(f"OpenCV could not open video file: {video_path}")
 
         try:
-            fps = float(cap.get(cv2.CAP_PROP_FPS)) or 30.0
+            raw_fps = float(cap.get(cv2.CAP_PROP_FPS))
+            fps = raw_fps if (raw_fps > 0 and raw_fps <= 120) else 30.0
             total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-            width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-            height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-            duration_s = round(total_frames / fps, 2) if fps > 0 and total_frames > 0 else 0.0
+            width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)) or 640
+            height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)) or 480
+            duration_s = round(total_frames / fps, 2) if (fps > 0 and total_frames > 0) else 5.0
 
             return {
                 "fps": round(fps, 2),
-                "total_frames": total_frames,
+                "total_frames": max(0, total_frames),
                 "width": width,
                 "height": height,
                 "duration_seconds": duration_s
@@ -77,10 +81,13 @@ class VideoProcessor:
         :return: (frames_rgb_list, frame_indices_list, metadata)
         """
         metadata = self.get_metadata(video_path)
-        fps = metadata["fps"]
+        fps = metadata["fps"] if metadata["fps"] > 0 else 30.0
         stride = max(1, int(round(fps / self.target_sample_fps)))
 
         cap = cv2.VideoCapture(video_path)
+        if not cap.isOpened():
+            cap = cv2.VideoCapture(video_path, cv2.CAP_FFMPEG)
+
         frames_rgb = []
         indices = []
         current_frame_idx = 0
@@ -98,6 +105,12 @@ class VideoProcessor:
                     indices.append(current_frame_idx)
 
                 current_frame_idx += 1
+
+            # Update metadata if stream lacked container duration headers
+            if metadata["duration_seconds"] <= 0 or metadata["total_frames"] <= 0:
+                metadata["total_frames"] = current_frame_idx
+                metadata["duration_seconds"] = round(current_frame_idx / fps, 2) if fps > 0 else 5.0
+            metadata["frames_sampled"] = len(frames_rgb)
 
             return frames_rgb, indices, metadata
         finally:

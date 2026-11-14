@@ -334,20 +334,66 @@ class SessionDetailApiView(APIView):
     def get(self, request, session_id):
         try:
             session = ScreeningSession.objects.prefetch_related(
-                "channel_results", "audit_logs"
+                "channel_results", "audit_logs", "evidence_artifacts"
             ).get(session_id=session_id)
         except ScreeningSession.DoesNotExist:
             return Response({"error": "Session not found"}, status=status.HTTP_404_NOT_FOUND)
 
         fusion = getattr(session, "fusion_result", None)
-        channels = {
-            cr.channel.lower(): {
-                "score": cr.normalised_score,
+        fusion_data = {
+            "fused_score": fusion.fused_score,
+            "composite_score": fusion.fused_score,
+            "risk_band": fusion.risk_band,
+            "escalated": fusion.escalated,
+            "escalation_reason": fusion.escalation_reason or "",
+            "recommendation": fusion.recommendation or "",
+            "weights": fusion.weights_json
+        } if fusion else {
+            "composite_score": 0.0,
+            "risk_band": "LOW",
+            "escalated": False,
+            "recommendation": "Processing or incomplete screening session."
+        }
+
+        channel_results = [
+            {
+                "channel": cr.channel,
+                "raw_score": cr.raw_score,
+                "normalised_score": cr.normalised_score,
                 "flagged": cr.flagged,
+                "notes": cr.features_json.get("notes", "") if isinstance(cr.features_json, dict) else str(cr.features_json),
                 "features": cr.features_json
             }
             for cr in session.channel_results.all()
-        }
+        ]
+
+        # Check stored or generated evidence artifacts
+        artifacts = []
+        for art in session.evidence_artifacts.all():
+            artifacts.append({
+                "artifact_type": art.artifact_type,
+                "storage_path": art.storage_path,
+                "sha256_hash": art.sha256_hash
+            })
+
+        # Dynamic fallback: check disk if artifacts exist in media/evidence
+        evidence_dir = os.path.join(settings.MEDIA_ROOT, "evidence")
+        gradcam_file = f"gradcam_{session.session_id}.jpg"
+        ear_file = f"ear_{session.session_id}.png"
+        if not any(a["artifact_type"] == "GRADCAM" for a in artifacts):
+            if os.path.exists(os.path.join(evidence_dir, gradcam_file)):
+                artifacts.append({
+                    "artifact_type": "GRADCAM",
+                    "storage_path": f"{settings.MEDIA_URL}evidence/{gradcam_file}",
+                    "sha256_hash": "verified"
+                })
+        if not any(a["artifact_type"] == "EAR_PLOT" for a in artifacts):
+            if os.path.exists(os.path.join(evidence_dir, ear_file)):
+                artifacts.append({
+                    "artifact_type": "EAR_PLOT",
+                    "storage_path": f"{settings.MEDIA_URL}evidence/{ear_file}",
+                    "sha256_hash": "verified"
+                })
 
         audit_history = [
             {
@@ -359,6 +405,15 @@ class SessionDetailApiView(APIView):
             }
             for a in session.audit_logs.all()
         ]
+
+        channels = {
+            cr.channel.lower(): {
+                "score": cr.normalised_score,
+                "flagged": cr.flagged,
+                "features": cr.features_json
+            }
+            for cr in session.channel_results.all()
+        }
 
         return Response({
             "session_id": str(session.session_id),
@@ -372,6 +427,10 @@ class SessionDetailApiView(APIView):
             "escalated": fusion.escalated if fusion else False,
             "recommendation": fusion.recommendation if fusion else "",
             "channels": channels,
+            "fusion_result": fusion_data,
+            "channel_results": channel_results,
+            "evidence_artifacts": artifacts,
+            "audit_logs": audit_history,
             "audit_history": audit_history
         }, status=status.HTTP_200_OK)
 

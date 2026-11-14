@@ -27,6 +27,7 @@ export default function ApplicantPortal({ onScreeningComplete }) {
   const [countdown, setCountdown] = useState(null);
   const [recordedBlob, setRecordedBlob] = useState(null);
   const [recordedVideoUrl, setRecordedVideoUrl] = useState(null);
+  const [recordedMimeType, setRecordedMimeType] = useState('video/webm');
   const [cameraError, setCameraError] = useState(null);
 
   // Upload file state
@@ -101,9 +102,23 @@ export default function ApplicantPortal({ onScreeningComplete }) {
 
   const startMediaRecorder = () => {
     setIsRecording(true);
-    const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
-      ? 'video/webm;codecs=vp9'
-      : 'video/webm';
+    
+    // Choose best supported codec (prefer MP4 on Chromium/Windows for seamless OpenCV compatibility)
+    let mimeType = 'video/webm';
+    const candidates = [
+      'video/mp4;codecs=avc1',
+      'video/mp4',
+      'video/webm;codecs=vp9',
+      'video/webm;codecs=vp8',
+      'video/webm'
+    ];
+    for (const c of candidates) {
+      if (MediaRecorder.isTypeSupported(c)) {
+        mimeType = c;
+        break;
+      }
+    }
+    setRecordedMimeType(mimeType);
 
     const recorder = new MediaRecorder(webcamStream, { mimeType });
     mediaRecorderRef.current = recorder;
@@ -119,7 +134,7 @@ export default function ApplicantPortal({ onScreeningComplete }) {
     };
 
     recorder.onstop = () => {
-      const blob = new Blob(recordedChunksRef.current, { type: 'video/webm' });
+      const blob = new Blob(recordedChunksRef.current, { type: mimeType });
       setRecordedBlob(blob);
       setRecordedVideoUrl(URL.createObjectURL(blob));
       setIsRecording(false);
@@ -144,8 +159,10 @@ export default function ApplicantPortal({ onScreeningComplete }) {
 
   // Submit screening session
   const handleSubmit = async () => {
+    const isMp4 = recordedMimeType.includes('mp4');
+    const filename = isMp4 ? 'webcam_kyc.mp4' : 'webcam_kyc.webm';
     const videoFile = mode === 'webcam' 
-      ? new File([recordedBlob], 'webcam_kyc.webm', { type: 'video/webm' })
+      ? new File([recordedBlob], filename, { type: recordedMimeType })
       : selectedFile;
 
     if (!videoFile) return;
