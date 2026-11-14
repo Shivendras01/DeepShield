@@ -34,7 +34,12 @@ telemetry_engine = TelemetryEngine()
 fusion_engine = RiskFusionEngine()
 video_processor = VideoProcessor(target_sample_fps=5.0, crop_margin=0.20)
 liveness_analyzer = LivenessAnalyzer()
-deepfake_detector = SpatialDeepfakeDetector(device="cpu")
+
+DEFAULT_WEIGHTS_PATH = os.path.join(settings.BASE_DIR, "screening", "weights", "efficientnet_b0_deepshield.pth")
+deepfake_detector = SpatialDeepfakeDetector(
+    weights_path=DEFAULT_WEIGHTS_PATH if os.path.exists(DEFAULT_WEIGHTS_PATH) else None,
+    device="cpu"
+)
 gradcam_generator = GradCAMGenerator(deepfake_detector.model)
 
 

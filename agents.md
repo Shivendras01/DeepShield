@@ -118,8 +118,10 @@ git push -u origin feature/<short-descriptive-name>
   - Forward-backward gradient hooks on final convolutional layer (`features[-1]`).
   - Global average pooled feature weights yielding high-resolution spatial heatmap.
   - Jet colormap overlay blended with original face crop ($\alpha=0.55$) and saved to `media/evidence/gradcam_<session_id>.jpg`.
-- **Colab Training Pipeline (`ml/training/train_efficientnet.py`):**
-  - Standalone script with 2-stage transfer learning (frozen backbone warm-up followed by fine-tuning at $1\times 10^{-4}$ lr) targeting FaceForensics++ and Celeb-DF.
+- **Colab Training Pipeline & Notebook (`ml/training/`):**
+  - `ml/training/train_efficientnet.py`: Standalone CLI script.
+  - `ml/training/DeepShield_Colab_Training.ipynb`: Interactive Google Colab notebook preconfigured with Kaggle API authentication, tripartite dataset setup (FF++ baseline, WildDeepfake real-world upgrade, Celeb-DF v2 unseen test benchmark), 2-stage transfer learning, and auto-generation of publication figures (ROC-AUC, confusion matrix, loss curves).
+  - Model weights directory configured at `backend/screening/weights/` to load `efficientnet_b0_deepshield.pth` automatically.
 - **Pipeline Wiring & Unit Tests (`backend/screening/test_spatial.py`):**
   - Dynamic artifact registration in `EvidenceArtifact` with SHA-256 integrity hashes.
   - All 28 tests passing (`OK`).
