@@ -5,9 +5,9 @@
 > **Authors & Roles:**  
 > - **Shivendra Singh Chauhan (User):** Backend Architecture, System Engineering, Full-Stack Delivery, Video Pipeline, Risk Fusion, Telemetry & Serving.  
 > - **Divya (Project Partner):** Project Co-author (Machine Learning & Research). Due to hardware unavailability, Shivendra + Antigravity are implementing all modules end-to-end.  
-> **Current Active Branch:** `feature/passive-liveness`  
+> **Current Active Branch:** `feature/spatial-deepfake-gradcam`  
 > **Remote Origin:** `https://github.com/Shivendras01/DeepShield.git`  
-> **Last Updated:** Channel 2: Passive Liveness Engine & EAR Plot Generation
+> **Last Updated:** Channel 1: Spatial Deepfake AI (EfficientNet-B0) & Grad-CAM Heatmaps
 
 ---
 
@@ -99,7 +99,7 @@ git push -u origin feature/<short-descriptive-name>
   - `GET /api/v1/sessions/<id>/`: Full historical forensic report.
   - `POST /api/v1/sessions/<id>/review/`: Bank officer approval/rejection action logging.
 
-### 🔄 Step 2F: Passive Liveness Engine (Current Branch: `feature/passive-liveness`)
+### ✅ Step 2F: Passive Liveness Engine (Merged into `main` via PR #5)
 - **Passive Liveness Analyzer (`backend/screening/liveness.py`):**
   - Uses MediaPipe Face Mesh (468 landmarks) to isolate eye contours.
   - Computes Eye Aspect Ratio (EAR) per frame: $\text{EAR} = (\|p2-p6\| + \|p3-p5\|) / (2 \cdot \|p1-p4\|)$.
@@ -108,18 +108,32 @@ git push -u origin feature/<short-descriptive-name>
   - Generates dark-themed EAR temporal curve plots saved into `media/evidence/ear_<session_id>.png`.
   - Wired into `views.py` for live video uploads.
 - **Unit Tests (`backend/screening/test_liveness.py`):** 4 test suites verifying geometric EAR calculation, blink transitions, plot generation, and empty inputs.
-- All 25 screening tests passing (`OK`).
+
+### 🔄 Step 2G: Channel 1 — Spatial Deepfake AI & Grad-CAM (Current Branch: `feature/spatial-deepfake-gradcam`)
+- **PyTorch EfficientNet-B0 Classifier (`backend/screening/deepfake.py`):**
+  - Custom classification head over `features` backbone with Dropout(0.4) and Linear projection.
+  - Preprocessing with standard ImageNet mean/std normalization on $(224 \times 224)$ face crops.
+  - Dual aggregation over frame-level logits: mean video score and 90th-percentile anomaly capture score.
+- **Grad-CAM Explainability Engine (`backend/screening/gradcam.py`):**
+  - Forward-backward gradient hooks on final convolutional layer (`features[-1]`).
+  - Global average pooled feature weights yielding high-resolution spatial heatmap.
+  - Jet colormap overlay blended with original face crop ($\alpha=0.55$) and saved to `media/evidence/gradcam_<session_id>.jpg`.
+- **Colab Training Pipeline & Notebook (`ml/training/`):**
+  - `ml/training/train_efficientnet.py`: Standalone CLI script.
+  - `ml/training/DeepShield_Colab_Training.ipynb`: Interactive Google Colab notebook preconfigured with Kaggle API authentication, tripartite dataset setup (FF++ baseline, WildDeepfake real-world upgrade, Celeb-DF v2 unseen test benchmark), 2-stage transfer learning, and auto-generation of publication figures (ROC-AUC, confusion matrix, loss curves).
+  - Model weights directory configured at `backend/screening/weights/` to load `efficientnet_b0_deepshield.pth` automatically.
+- **Pipeline Wiring & Unit Tests (`backend/screening/test_spatial.py`):**
+  - Dynamic artifact registration in `EvidenceArtifact` with SHA-256 integrity hashes.
+  - All 28 tests passing (`OK`).
 
 ---
 
 ## 4. Master Development Roadmap (Next Steps)
 
-1. **Branch `feature/spatial-deepfake-gradcam`:**
-   - Install `torch` and `torchvision`.
-   - Implement `backend/screening/deepfake.py` using PyTorch `EfficientNet-B0`.
-   - Implement Grad-CAM saliency generator extracting heatmaps on flagged face crops and saving them to `media/evidence/`.
-   - Wire spatial deepfake inference into `POST /api/v1/screen/`.
-2. **Branch `feature/frontend-dashboard`:**
-   - Initialize `frontend/` with Vite, React, and Tailwind CSS.
-   - Build View A: Applicant Webcam KYC capture screen (showing clean applicant status).
-   - Build View B: Bank Officer Forensic Audit Dashboard (0–100 Risk Gauge, Grad-CAM viewer, EAR curve, Audit trail, Approve/Reject buttons).
+1. **Branch `feature/frontend-dashboard` (Step 4):**
+   - Initialize `frontend/` using Vite + React + Tailwind CSS.
+   - **View 1 (Applicant KYC Screen):** Live webcam recording, status progression, and clean friendly result badge (Approved / Review / Retry).
+   - **View 2 (Bank Officer Forensic Portal):**
+     - Review queue table with risk badges.
+     - Forensic Inspector: 0–100 Fraud Risk Gauge, 3-channel breakdown cards, dual evidence viewers (interactive Grad-CAM heatmap viewer + EAR temporal blink chart), and append-only audit trail viewer.
+     - Human-in-the-Loop decision panel: Approve / Reject buttons submitting to `POST /api/v1/sessions/<id>/review/`.
