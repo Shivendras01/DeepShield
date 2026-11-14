@@ -52,6 +52,7 @@ yarn-error.log*
 *.onnx
 *.h5
 *.tflite
+*.zip
 datasets/
 data/raw/
 data/processed/

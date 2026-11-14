@@ -58,6 +58,9 @@ class SpatialDeepfakeDetector:
         if weights_path and os.path.exists(weights_path):
             try:
                 state_dict = torch.load(weights_path, map_location=self.device)
+                # Remap keys if checkpoint was saved directly from EfficientNet backbone without 'backbone.' prefix
+                if any(k.startswith("features.") for k in state_dict.keys()):
+                    state_dict = {f"backbone.{k}": v for k, v in state_dict.items()}
                 self.model.load_state_dict(state_dict)
                 self.is_custom_checkpoint = True
             except Exception:

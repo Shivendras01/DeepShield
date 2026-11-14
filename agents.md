@@ -121,7 +121,8 @@ git push -u origin feature/<short-descriptive-name>
 - **Colab Training Pipeline & Notebook (`ml/training/`):**
   - `ml/training/train_efficientnet.py`: Standalone CLI script.
   - `ml/training/DeepShield_Colab_Training.ipynb`: Interactive Google Colab notebook preconfigured with Kaggle API authentication, tripartite dataset setup (FF++ baseline, WildDeepfake real-world upgrade, Celeb-DF v2 unseen test benchmark), 2-stage transfer learning, and auto-generation of publication figures (ROC-AUC, confusion matrix, loss curves).
-  - Model weights directory configured at `backend/screening/weights/` to load `efficientnet_b0_deepshield.pth` automatically.
+  - Model weights directory configured at `backend/screening/weights/efficientnet_b0_deepshield.pth` with dynamic key remapping (`is_custom_checkpoint=True`).
+  - Evaluation figures and research report assets cataloged in `ml/results/` (`training_curves.png`, `roc_curve.png`, `confusion_matrix.png`, `gradcam_sample.png`).
 - **Pipeline Wiring & Unit Tests (`backend/screening/test_spatial.py`):**
   - Dynamic artifact registration in `EvidenceArtifact` with SHA-256 integrity hashes.
   - All 28 tests passing (`OK`).
