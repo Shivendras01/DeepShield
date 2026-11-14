@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import Navbar from './components/Navbar';
-import ApplicantPortal from './components/applicant/ApplicantPortal';
-import OfficerPortal from './components/reviewer/OfficerPortal';
+import ApplicantPage from './pages/ApplicantPage';
+import OfficerPage from './pages/OfficerPage';
 import { api } from './services/api';
 
 export default function App() {
@@ -39,9 +39,9 @@ export default function App() {
         {/* Main Perspective Body */}
         <main className="transition-all duration-300">
           {activePortal === 'applicant' ? (
-            <ApplicantPortal onScreeningComplete={handleScreeningComplete} />
+            <ApplicantPage onScreeningComplete={handleScreeningComplete} />
           ) : (
-            <OfficerPortal initialSessionId={lastScreenedSessionId} />
+            <OfficerPage initialSessionId={lastScreenedSessionId} />
           )}
         </main>
       </div>
