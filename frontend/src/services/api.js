@@ -1,0 +1,71 @@
+/**
+ * DeepShield Screening API Service Client
+ * Handles communication with the Django REST Backend
+ */
+
+const API_BASE_URL = 'http://localhost:8000/api/v1';
+export const BACKEND_URL = 'http://localhost:8000';
+
+export function resolveMediaUrl(path) {
+  if (!path) return null;
+  if (path.startsWith('http://') || path.startsWith('https://')) {
+    return path;
+  }
+  return `${BACKEND_URL}${path.startsWith('/') ? '' : '/'}${path}`;
+}
+
+export const api = {
+  // Health check
+  async checkHealth() {
+    try {
+      const res = await fetch(`${API_BASE_URL}/health/`);
+      if (!res.ok) throw new Error('Backend offline');
+      return await res.json();
+    } catch (err) {
+      return { status: 'offline', error: err.message };
+    }
+  },
+
+  // Submit e-KYC video session
+  async submitScreening(formData) {
+    const res = await fetch(`${API_BASE_URL}/screen/`, {
+      method: 'POST',
+      body: formData,
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || data.detail || 'Screening request failed');
+    }
+    return data;
+  },
+
+  // Get officer review queue sessions
+  async getSessions() {
+    const res = await fetch(`${API_BASE_URL}/sessions/`);
+    if (!res.ok) throw new Error('Failed to fetch session queue');
+    return await res.json();
+  },
+
+  // Get full forensic dossier for a session
+  async getSessionDetail(sessionId) {
+    const res = await fetch(`${API_BASE_URL}/sessions/${sessionId}/`);
+    if (!res.ok) throw new Error('Failed to fetch forensic dossier');
+    return await res.json();
+  },
+
+  // Submit officer decision (Approve / Reject)
+  async submitReview(sessionId, { action, notes }) {
+    const res = await fetch(`${API_BASE_URL}/sessions/${sessionId}/review/`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ action, notes }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || 'Review submission failed');
+    }
+    return data;
+  },
+};

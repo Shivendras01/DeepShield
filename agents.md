@@ -5,9 +5,9 @@
 > **Authors & Roles:**  
 > - **Shivendra Singh Chauhan (User):** Backend Architecture, System Engineering, Full-Stack Delivery, Video Pipeline, Risk Fusion, Telemetry & Serving.  
 > - **Divya (Project Partner):** Project Co-author (Machine Learning & Research). Due to hardware unavailability, Shivendra + Antigravity are implementing all modules end-to-end.  
-> **Current Active Branch:** `feature/spatial-deepfake-gradcam`  
+> **Current Active Branch:** `feature/frontend-dashboard`  
 > **Remote Origin:** `https://github.com/Shivendras01/DeepShield.git`  
-> **Last Updated:** Channel 1: Spatial Deepfake AI (EfficientNet-B0) & Grad-CAM Heatmaps
+> **Last Updated:** Step 4: Dual-Perspective React Frontend Dashboard & Forensic Reviewer Portal
 
 ---
 
@@ -109,7 +109,7 @@ git push -u origin feature/<short-descriptive-name>
   - Wired into `views.py` for live video uploads.
 - **Unit Tests (`backend/screening/test_liveness.py`):** 4 test suites verifying geometric EAR calculation, blink transitions, plot generation, and empty inputs.
 
-### 🔄 Step 2G: Channel 1 — Spatial Deepfake AI & Grad-CAM (Current Branch: `feature/spatial-deepfake-gradcam`)
+### ✅ Step 2G: Channel 1 — Spatial Deepfake AI & Grad-CAM (Merged into `main` via PR #6 & PR #7)
 - **PyTorch EfficientNet-B0 Classifier (`backend/screening/deepfake.py`):**
   - Custom classification head over `features` backbone with Dropout(0.4) and Linear projection.
   - Preprocessing with standard ImageNet mean/std normalization on $(224 \times 224)$ face crops.
@@ -127,14 +127,24 @@ git push -u origin feature/<short-descriptive-name>
   - Dynamic artifact registration in `EvidenceArtifact` with SHA-256 integrity hashes.
   - All 28 tests passing (`OK`).
 
----
-
-## 4. Master Development Roadmap (Next Steps)
-
-1. **Branch `feature/frontend-dashboard` (Step 4):**
-   - Initialize `frontend/` using Vite + React + Tailwind CSS.
-   - **View 1 (Applicant KYC Screen):** Live webcam recording, status progression, and clean friendly result badge (Approved / Review / Retry).
-   - **View 2 (Bank Officer Forensic Portal):**
-     - Review queue table with risk badges.
-     - Forensic Inspector: 0–100 Fraud Risk Gauge, 3-channel breakdown cards, dual evidence viewers (interactive Grad-CAM heatmap viewer + EAR temporal blink chart), and append-only audit trail viewer.
-     - Human-in-the-Loop decision panel: Approve / Reject buttons submitting to `POST /api/v1/sessions/<id>/review/`.
+### 🔄 Step 4: Dual-Perspective React Frontend Dashboard (Current Branch: `feature/frontend-dashboard`)
+- **Scaffold & Styling:**
+  - Vite + React 19 + Tailwind CSS styled with Swiss private banking palette (Alabaster `#FBFBFA`, Deep Forest Emerald `#0E4937`, Botanical Sage `#0F766E`, Obsidian `#191B1D`).
+  - Clean `lucide-react` icons and spring micro-interactions.
+- **Navbar & Role Switcher (`Navbar.jsx`):**
+  - Real-time backend health status pulse checking `/api/v1/health/`.
+  - One-click Perspective Slider toggle between **Applicant e-KYC Portal** and **Bank Officer Dossier**.
+- **View 1: Applicant e-KYC Experience (`ApplicantPortal.jsx`):**
+  - WebRTC live camera capture with 5-second countdown timer and oval biometric facial guide.
+  - Sample video upload mode for viva test clips.
+  - Silent browser telemetry harvesting (user-agent, screen resolution, timestamp jitter intervals).
+  - Live 4-stage pipeline ingestion progress stepper.
+  - Dual-Perspective outcome cards: 🟢 Approved, 🟡 Under Review, 🔴 Retry Inconclusive (strictly withholding internal risk scores from candidates).
+- **View 2: Bank Compliance Officer Portal (`OfficerPortal.jsx` & `ForensicDossier.jsx`):**
+  - Filterable incoming session review queue (`All`, `Requires Review (25–74)`, `High Risk (75+)`, `Approved`).
+  - 0–100 SVG Fraud Risk radial gauge color-coded across 4 risk bands.
+  - 3-Channel Diagnostic cards (Spatial CNN, Passive Liveness EAR, Video Telemetry).
+  - Visual Evidence Studio: Interactive side-by-side face crop with **Grad-CAM heatmap** and **Temporal EAR blink curve**.
+  - Rule-based policy escalation banners.
+  - Human-in-the-Loop decision panel: Approve / Reject with mandatory officer comments logging to the append-only `AuditLog`.
+  - Cryptographic audit trail viewer with SHA-256 payload verification hashes.
