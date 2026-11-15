@@ -213,8 +213,10 @@ export default function ForensicDossier({ session, onBack, onReviewSubmitted }) 
                   </p>
                 </div>
                 <div className="mt-3 pt-2 border-t border-canvas-border/60">
-                  <span className="text-[9px] font-semibold text-emerald-bank bg-emerald-soft px-1.5 py-0.5 rounded">
-                    Trained Checkpoint Active
+                  <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded ${
+                    spatialChan.normalised_score > 50 ? 'bg-wine-soft text-wine-bank' : 'bg-emerald-soft text-emerald-bank'
+                  }`}>
+                    {spatialChan.normalised_score > 50 ? 'Synthetic Artifact Alert' : 'Biometric Texture Verified'}
                   </span>
                 </div>
               </div>
@@ -234,12 +236,14 @@ export default function ForensicDossier({ session, onBack, onReviewSubmitted }) 
                     </span>
                   </div>
                   <p className="text-[11px] text-ink-muted leading-relaxed line-clamp-3">
-                    {livenessChan.notes || 'MediaPipe 468 mesh blink detection.'}
+                    {livenessChan.notes || 'MediaPipe FaceLandmarker blink & PAD analysis.'}
                   </p>
                 </div>
                 <div className="mt-3 pt-2 border-t border-canvas-border/60">
-                  <span className="text-[9px] font-semibold text-ink-muted">
-                    Geometric Eye Ratio
+                  <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded ${
+                    livenessChan.normalised_score > 50 ? 'bg-wine-soft text-wine-bank' : 'bg-emerald-soft text-emerald-bank'
+                  }`}>
+                    {livenessChan.normalised_score > 50 ? '⚠️ Presentation Attack / Flagged' : 'Biometric Liveness Verified'}
                   </span>
                 </div>
               </div>
@@ -259,12 +263,14 @@ export default function ForensicDossier({ session, onBack, onReviewSubmitted }) 
                     </span>
                   </div>
                   <p className="text-[11px] text-ink-muted leading-relaxed line-clamp-3">
-                    {telemetryChan.notes || 'Camera stream jitter & driver signatures.'}
+                    {telemetryChan.notes || 'Capture stream driver inspection.'}
                   </p>
                 </div>
                 <div className="mt-3 pt-2 border-t border-canvas-border/60">
-                  <span className="text-[9px] font-semibold text-ink-muted">
-                    Injection Analysis
+                  <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded ${
+                    telemetryChan.normalised_score > 50 ? 'bg-wine-soft text-wine-bank' : 'bg-emerald-soft text-emerald-bank'
+                  }`}>
+                    {telemetryChan.normalised_score > 50 ? '⚠️ Software Injection' : 'Capture Path Genuine'}
                   </span>
                 </div>
               </div>
@@ -308,7 +314,9 @@ export default function ForensicDossier({ session, onBack, onReviewSubmitted }) 
                   )}
                 </div>
                 <p className="text-[10px] text-ink-muted leading-tight">
-                  Highlights high-frequency convolutional anomalies and synthetic blending seams.
+                  {spatialChan.normalised_score < 35 
+                    ? 'Subdued cool overlay confirms genuine facial texture without synthetic anomalies.' 
+                    : 'Highlights high-frequency convolutional anomalies and synthetic blending seams.'}
                 </p>
               </div>
 

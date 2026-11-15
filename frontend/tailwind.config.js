@@ -8,22 +8,22 @@ export default {
     extend: {
       colors: {
         canvas: {
-          DEFAULT: '#FBFBFA',
-          subtle: '#F6F6F3',
+          DEFAULT: '#F8FAFC',
+          subtle: '#F1F5F9',
           card: '#FFFFFF',
-          border: '#E8E7E1',
-          'border-subtle': '#F0EFEA',
+          border: '#E2E8F0',
+          'border-subtle': '#EEF2F6',
         },
         ink: {
-          DEFAULT: '#191B1D',
-          muted: '#666C72',
-          faint: '#9EA3A8',
+          DEFAULT: '#0F172A',
+          muted: '#475569',
+          faint: '#94A3B8',
         },
         emerald: {
-          bank: '#0E4937',
-          hover: '#0A392B',
-          soft: '#EAF5F0',
-          border: '#CBE5D9',
+          bank: '#064E3B',
+          hover: '#022C22',
+          soft: '#ECFDF5',
+          border: '#A7F3D0',
         },
         sage: {
           DEFAULT: '#0F766E',

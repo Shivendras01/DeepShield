@@ -189,10 +189,12 @@ export default function ApplicantPortal({ onScreeningComplete }) {
       const telemetry = {
         user_agent: navigator.userAgent,
         screen_resolution: `${window.screen.width}x${window.screen.height}`,
-        camera_label: webcamStream ? webcamStream.getVideoTracks()[0]?.label || 'Standard WebCam' : 'File Upload Source',
+        camera_label: webcamStream ? webcamStream.getVideoTracks()[0]?.label || 'Integrated Webcam' : 'File Upload Source',
         frame_timestamps: frameTimestampsRef.current.length > 5 ? frameTimestampsRef.current : undefined,
       };
-      formData.append('telemetry_payload', JSON.stringify(telemetry));
+      const telemetryStr = JSON.stringify(telemetry);
+      formData.append('telemetry', telemetryStr);
+      formData.append('telemetry_payload', telemetryStr);
 
       const response = await api.submitScreening(formData);
       

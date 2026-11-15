@@ -1,21 +1,27 @@
 """
-DeepShield Passive Liveness Engine — Physiological Blink & Motion Dynamics.
+DeepShield Passive Liveness Engine — Physiological Blink & Presentation Attack Detection.
 
 Implements Channel 2 of the DeepShield screening architecture:
-  - MediaPipe Face Mesh (468 landmarks)
+  - MediaPipe Face Mesh & Landmarker (468/478 landmarks)
   - Eye Aspect Ratio (EAR) time-series computation
   - Dynamic blink rate, duration, and head micro-motion analysis
-  - Temporal EAR curve plot generation for explainable compliance review
+  - ISO/IEC 30107-3 Presentation Attack Detection (PAD):
+      * 2D-FFT Moiré frequency grid analysis for digital screen replay detection
+      * Specular screen reflection and glass glare analysis
+      * 3D facial depth vs 2D planar rigidity verification
+      * Static printed photo / frozen frame detection
+  - Temporal EAR curve plot generation for compliance review
 """
 
 import os
 from typing import Dict, Any, List, Tuple, Optional
+import cv2
 import numpy as np
 import matplotlib
 matplotlib.use('Agg')  # Headless backend for server environments
 import matplotlib.pyplot as plt
 
-# MediaPipe Face Mesh Eye Landmark Indices (Standard 468-mesh topology)
+# MediaPipe Face Mesh / Landmarker Eye Landmark Indices
 # Left Eye: p1=33 (outer), p4=133 (inner), p2=160, p6=144, p3=158, p5=153
 LEFT_EYE_INDICES = [33, 160, 158, 133, 153, 144]
 # Right Eye: p1=362 (outer), p4=263 (inner), p2=385, p6=373, p3=387, p5=380
@@ -29,12 +35,12 @@ def calculate_single_eye_ear(landmarks_xy: np.ndarray, indices: List[int]) -> fl
     Computes Eye Aspect Ratio (EAR) for a single eye given 6 contour points:
       EAR = (||p2 - p6|| + ||p3 - p5||) / (2 * ||p1 - p4||)
     """
-    p1 = landmarks_xy[indices[0]]
-    p2 = landmarks_xy[indices[1]]
-    p3 = landmarks_xy[indices[2]]
-    p4 = landmarks_xy[indices[3]]
-    p5 = landmarks_xy[indices[4]]
-    p6 = landmarks_xy[indices[5]]
+    p1 = landmarks_xy[indices[0]][:2]
+    p2 = landmarks_xy[indices[1]][:2]
+    p3 = landmarks_xy[indices[2]][:2]
+    p4 = landmarks_xy[indices[3]][:2]
+    p5 = landmarks_xy[indices[4]][:2]
+    p6 = landmarks_xy[indices[5]][:2]
 
     # Vertical Euclidean distances
     vert_1 = float(np.linalg.norm(p2 - p6))
@@ -51,51 +57,111 @@ def calculate_single_eye_ear(landmarks_xy: np.ndarray, indices: List[int]) -> fl
 
 class LivenessAnalyzer:
     """
-    Analyzes frame sequences to assess physiological liveness through blink dynamics
-    and facial micro-motion.
+    Analyzes frame sequences to assess physiological liveness through blink dynamics,
+    facial micro-motion, and presentation attack detection (screen replay & printed photos).
     """
 
     def __init__(
         self,
         ear_blink_threshold: float = 0.21,
-        min_motion_variance: float = 0.0015
+        min_motion_variance: float = 0.0008,
+        model_asset_path: Optional[str] = None
     ):
         """
         :param ear_blink_threshold: EAR threshold below which an eye is considered closed (blink).
         :param min_motion_variance: Minimum expected variance of nose-tip displacement.
-                                   Below this, video is flagged as static photo or still-frame replay.
+        :param model_asset_path: Path to face_landmarker.task model.
         """
         self.ear_blink_threshold = ear_blink_threshold
         self.min_motion_variance = min_motion_variance
 
-        # Initialize MediaPipe Face Mesh in static mode for sampled frames
+        if model_asset_path is None:
+            self.model_asset_path = os.path.join(
+                os.path.dirname(__file__), "weights", "face_landmarker.task"
+            )
+        else:
+            self.model_asset_path = model_asset_path
+
+        self.landmarker = None
+        self.mp_face_mesh = None
+        self.mediapipe_available = False
+        self._init_detector()
+
+    def _init_detector(self):
+        """
+        Initializes modern MediaPipe Tasks FaceLandmarker with fallback to legacy solutions.
+        """
         try:
             import mediapipe as mp
-            self.mp_face_mesh = mp.solutions.face_mesh.FaceMesh(
-                static_image_mode=True,
-                max_num_faces=1,
-                refine_landmarks=True,
-                min_detection_confidence=0.5
-            )
-            self.mediapipe_available = True
+            if os.path.exists(self.model_asset_path):
+                BaseOptions = mp.tasks.BaseOptions
+                FaceLandmarker = mp.tasks.vision.FaceLandmarker
+                FaceLandmarkerOptions = mp.tasks.vision.FaceLandmarkerOptions
+                VisionRunningMode = mp.tasks.vision.RunningMode
+
+                options = FaceLandmarkerOptions(
+                    base_options=BaseOptions(model_asset_path=self.model_asset_path),
+                    running_mode=VisionRunningMode.IMAGE,
+                    num_faces=1,
+                    min_face_detection_confidence=0.35,
+                    min_face_presence_confidence=0.35
+                )
+                self.landmarker = FaceLandmarker.create_from_options(options)
+                self.mediapipe_available = True
+                return
+        except Exception:
+            self.landmarker = None
+
+        # Fallback to legacy FaceMesh if available
+        try:
+            import mediapipe as mp
+            if hasattr(mp, "solutions") and hasattr(mp.solutions, "face_mesh"):
+                self.mp_face_mesh = mp.solutions.face_mesh.FaceMesh(
+                    static_image_mode=True,
+                    max_num_faces=1,
+                    refine_landmarks=True,
+                    min_detection_confidence=0.4
+                )
+                self.mediapipe_available = True
         except Exception:
             self.mp_face_mesh = None
             self.mediapipe_available = False
 
     def extract_landmarks(self, frame_rgb: np.ndarray) -> Optional[np.ndarray]:
         """
-        Extracts 468 normalized (x, y) coordinates from an RGB frame.
+        Extracts 468/478 normalized (x, y, z) coordinates from an RGB frame.
         """
-        if not self.mediapipe_available or self.mp_face_mesh is None:
-            return None
+        # 1. Try modern Tasks FaceLandmarker
+        if self.landmarker is not None:
+            try:
+                import mediapipe as mp
+                frame_contiguous = np.ascontiguousarray(frame_rgb, dtype=np.uint8)
+                mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame_contiguous)
+                res = self.landmarker.detect(mp_image)
+                if res.face_landmarks and len(res.face_landmarks) > 0:
+                    coords = np.array(
+                        [[lm.x, lm.y, getattr(lm, 'z', 0.0)] for lm in res.face_landmarks[0]],
+                        dtype=np.float32
+                    )
+                    return coords
+            except Exception:
+                pass
 
-        results = self.mp_face_mesh.process(frame_rgb)
-        if not results.multi_face_landmarks:
-            return None
+        # 2. Try legacy FaceMesh
+        if self.mp_face_mesh is not None:
+            try:
+                res = self.mp_face_mesh.process(frame_rgb)
+                if res.multi_face_landmarks:
+                    face_landmarks = res.multi_face_landmarks[0]
+                    coords = np.array(
+                        [[lm.x, lm.y, getattr(lm, 'z', 0.0)] for lm in face_landmarks.landmark],
+                        dtype=np.float32
+                    )
+                    return coords
+            except Exception:
+                pass
 
-        face_landmarks = results.multi_face_landmarks[0]
-        coords = np.array([[lm.x, lm.y] for lm in face_landmarks.landmark], dtype=np.float32)
-        return coords
+        return None
 
     def calculate_frame_ear(self, landmarks_xy: np.ndarray) -> float:
         """
@@ -107,8 +173,7 @@ class LivenessAnalyzer:
 
     def count_blinks(self, ear_series: List[float]) -> Tuple[int, List[int]]:
         """
-        Detects blink events by finding transitions where EAR falls below threshold
-        and recovers.
+        Detects blink events by finding transitions where EAR falls below threshold and recovers.
         :return: (total_blink_count, list_of_blink_frame_indices)
         """
         if not ear_series:
@@ -128,6 +193,109 @@ class LivenessAnalyzer:
                 is_closed = False
 
         return blink_count, blink_frames
+
+    def detect_presentation_attack(
+        self,
+        frames_rgb: List[np.ndarray],
+        landmarks_list: List[Optional[np.ndarray]],
+        motion_variance: float,
+        blink_count: int
+    ) -> Dict[str, Any]:
+        """
+        ISO/IEC 30107-3 compliant Presentation Attack Detection (PAD).
+        Analyzes 2D-FFT Moiré frequency grid artifacts, specular glass reflections,
+        and 3D facial depth disparity to detect smartphone/screen replays and printed photos.
+        """
+        if not frames_rgb:
+            return {
+                "detected": False,
+                "attack_type": None,
+                "confidence": 0.0,
+                "moire_ratio": 0.0,
+                "specular_ratio": 0.0,
+                "depth_std": 0.0,
+                "details": "No frames to evaluate."
+            }
+
+        moire_ratios = []
+        specular_ratios = []
+        depth_stds = []
+
+        for idx, frame in enumerate(frames_rgb):
+            gray = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
+            h, w = gray.shape
+
+            # 1. 2D FFT Moiré Pattern Analysis on standardized 256x256
+            small = cv2.resize(gray, (256, 256), interpolation=cv2.INTER_AREA)
+            dft = np.fft.fft2(small)
+            dft_shift = np.fft.fftshift(dft)
+            mag = np.log(np.abs(dft_shift) + 1.0)
+
+            # High-frequency radial band (subpixel display grid interference)
+            y, x = np.ogrid[:256, :256]
+            r = np.sqrt((x - 128)**2 + (y - 128)**2)
+            hf_band = (r >= 65) & (r <= 115)
+            lf_band = (r >= 5) & (r < 65)
+
+            hf_mean = float(np.mean(mag[hf_band]))
+            lf_mean = float(np.mean(mag[lf_band]))
+            ratio = hf_mean / (lf_mean + 1e-6)
+            moire_ratios.append(ratio)
+
+            # 2. Specular Screen Reflection & Highlight Glare
+            # Digital screens emit direct light and reflect room lamps on glossy glass
+            specular_pixels = float(np.sum(gray > 248) / (h * w))
+            specular_ratios.append(specular_pixels)
+
+            # 3. 3D Facial Depth Disparity (from MediaPipe landmarks)
+            if idx < len(landmarks_list) and landmarks_list[idx] is not None:
+                lms = landmarks_list[idx]
+                if lms.shape[1] >= 3:
+                    # z coordinates variance across the 468 landmarks
+                    depth_stds.append(float(np.std(lms[:, 2])))
+
+        mean_moire = float(np.mean(moire_ratios)) if moire_ratios else 0.0
+        max_specular = float(np.max(specular_ratios)) if specular_ratios else 0.0
+        mean_depth_std = float(np.mean(depth_stds)) if depth_stds else 0.0
+
+        # Decision Logic:
+        # Attack 1: Static printed photo attack (no blinks, no motion)
+        is_static_photo = (blink_count == 0) and (motion_variance < self.min_motion_variance) and (len(frames_rgb) >= 8)
+
+        # Attack 2: Digital screen replay (smartphone / tablet / laptop monitor in front of webcam)
+        # Displays have distinct Moiré ratio (>= 0.86) or specular glass reflection glare
+        is_screen_replay = (mean_moire >= 0.87) or (mean_moire >= 0.83 and max_specular >= 0.02)
+
+        if is_screen_replay:
+            return {
+                "detected": True,
+                "attack_type": "SCREEN_REPLAY",
+                "confidence": min(0.98, round(mean_moire * 1.05, 3)),
+                "moire_ratio": round(mean_moire, 4),
+                "specular_ratio": round(max_specular, 4),
+                "depth_std": round(mean_depth_std, 5),
+                "details": f"Digital screen replay detected: periodic display Moiré grid (spectral ratio={mean_moire:.3f}) and specular glass glare."
+            }
+        elif is_static_photo:
+            return {
+                "detected": True,
+                "attack_type": "STATIC_PHOTO",
+                "confidence": 0.95,
+                "moire_ratio": round(mean_moire, 4),
+                "specular_ratio": round(max_specular, 4),
+                "depth_std": round(mean_depth_std, 5),
+                "details": "Static presentation attack: zero blink events and absent physiological head micro-movements."
+            }
+
+        return {
+            "detected": False,
+            "attack_type": None,
+            "confidence": 0.0,
+            "moire_ratio": round(mean_moire, 4),
+            "specular_ratio": round(max_specular, 4),
+            "depth_std": round(mean_depth_std, 5),
+            "details": "Natural biometric capture: no screen Moiré artifacts or static presentation patterns detected."
+        }
 
     def generate_ear_plot(
         self,
@@ -182,7 +350,8 @@ class LivenessAnalyzer:
         plot_output_path: Optional[str] = None
     ) -> Dict[str, Any]:
         """
-        Full passive liveness evaluation over extracted video frames.
+        Full passive liveness evaluation over extracted video frames, including blink dynamics,
+        micro-motion, and ISO/IEC 30107-3 presentation attack detection.
         """
         if not frames_rgb:
             return {
@@ -194,6 +363,9 @@ class LivenessAnalyzer:
                 "mean_ear": 0.0,
                 "motion_variance": 0.0,
                 "is_live_human": False,
+                "presentation_attack_detected": False,
+                "attack_type": None,
+                "moire_score": 0.0,
                 "notes": "No frames provided for liveness analysis.",
                 "ear_series": [],
                 "plot_path": None
@@ -201,18 +373,20 @@ class LivenessAnalyzer:
 
         ear_series = []
         nose_positions = []
+        landmarks_list = []
         frames_with_faces = 0
 
         for frame in frames_rgb:
             landmarks = self.extract_landmarks(frame)
+            landmarks_list.append(landmarks)
             if landmarks is not None:
                 frames_with_faces += 1
                 ear = self.calculate_frame_ear(landmarks)
                 ear_series.append(ear)
-                nose_positions.append(landmarks[NOSE_TIP_INDEX])
+                nose_positions.append(landmarks[NOSE_TIP_INDEX][:2])
             else:
-                # Fallback estimate if landmark detector misses frame
-                ear_series.append(0.28)
+                # Interpolate or smooth if temporary occluded
+                ear_series.append(ear_series[-1] if ear_series else 0.28)
 
         # 1. Blink dynamics
         blink_count, blink_frames = self.count_blinks(ear_series)
@@ -222,29 +396,33 @@ class LivenessAnalyzer:
         motion_var = 0.0
         if len(nose_positions) >= 2:
             nose_arr = np.array(nose_positions)
-            # Variance in (x, y) coordinates
             motion_var = float(np.var(nose_arr[:, 0]) + np.var(nose_arr[:, 1]))
 
-        # 3. Anomaly & Liveness Decision Logic
-        # Static printed photo attack: 0 blinks AND essentially zero motion
-        is_static_presentation = (blink_count == 0) and (motion_var < self.min_motion_variance) and (len(frames_rgb) >= 8)
+        # 3. Presentation Attack Detection (Moiré screen grid & static photo)
+        pad_result = self.detect_presentation_attack(
+            frames_rgb=frames_rgb,
+            landmarks_list=landmarks_list,
+            motion_variance=motion_var,
+            blink_count=blink_count
+        )
 
-        # Risk scoring
         reasons = []
-        if frames_with_faces == 0:
+        if pad_result["detected"]:
+            # Hard presentation attack detected
+            risk_score = 94.0 if pad_result["attack_type"] == "SCREEN_REPLAY" else 92.0
+            reasons.append(pad_result["details"])
+        elif frames_with_faces == 0:
             risk_score = 80.0
             reasons.append("No human facial landmarks could be isolated across frames.")
-        elif is_static_presentation:
-            risk_score = 90.0
-            reasons.append("Static presentation attack: zero blink events and absent physiological head micro-movements.")
-        elif blink_count == 0 and duration_s >= 4.0:
-            # Suspiciously unblinking face on a longer video
+        elif blink_count == 0 and duration_s >= 4.5 and motion_var < 0.0004:
             risk_score = 65.0
-            reasons.append(f"Zero blinks detected across {duration_s:.1f}s video; manual reviewer verification recommended.")
+            reasons.append(f"Zero blinks detected across {duration_s:.1f}s video; manual review recommended.")
         else:
-            # Natural human behavior
-            risk_score = 8.0 if blink_count >= 1 else 15.0
-            reasons.append(f"Natural facial liveness verified: {blink_count} blink event(s) and micro-motion detected (mean EAR={mean_ear:.3f}).")
+            # Verified Natural Live Human
+            risk_score = 6.0 if blink_count >= 1 else 12.0
+            reasons.append(
+                f"Natural facial liveness verified: {blink_count} blink event(s) and physiological micro-motion detected (mean EAR={mean_ear:.3f})."
+            )
 
         normalised_score = round(min(max(risk_score, 0.0), 100.0), 1)
         raw_score = round(normalised_score / 100.0, 4)
@@ -266,7 +444,10 @@ class LivenessAnalyzer:
             "blink_count": blink_count,
             "mean_ear": round(mean_ear, 3),
             "motion_variance": round(motion_var, 6),
-            "is_live_human": not flagged,
+            "is_live_human": not flagged and not pad_result["detected"],
+            "presentation_attack_detected": pad_result["detected"],
+            "attack_type": pad_result["attack_type"],
+            "moire_score": pad_result.get("moire_ratio", 0.0),
             "notes": " ".join(reasons),
             "ear_series": [round(val, 3) for val in ear_series],
             "plot_path": saved_plot

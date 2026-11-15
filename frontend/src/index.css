@@ -6,8 +6,8 @@
 
 @layer base {
   body {
-    background-color: #FBFBFA;
-    color: #191B1D;
+    background-color: #F8FAFC;
+    color: #0F172A;
     font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
@@ -25,9 +25,9 @@
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #E8E7E1;
+  background: #CBD5E1;
   border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #C8C6BD;
+  background: #94A3B8;
 }

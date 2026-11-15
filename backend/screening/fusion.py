@@ -110,22 +110,30 @@ class RiskFusionEngine:
         is_virtual_cam = telemetry_meta.get("virtual_camera_detected", False)
         if is_virtual_cam or s_t >= 0.85:
             escalated = True
-            final_score = max(final_score, 85.0)
+            final_score = max(final_score, 90.0)
             escalation_reasons.append("Critical capture path bypass: virtual camera or software driver detected.")
 
-        # Rule B: High-Confidence Facial Deepfake Manipulation
+        # Rule B: Presentation Attack (Digital Screen Replay or Static Photo Spoofing)
+        is_pad_attack = liveness_meta.get("presentation_attack_detected", False)
+        if is_pad_attack or s_l >= 0.90:
+            escalated = True
+            final_score = max(final_score, 92.0)
+            attack_desc = liveness_meta.get("attack_type", "digital screen replay or static spoof")
+            escalation_reasons.append(f"Critical presentation attack: {attack_desc} detected via Moiré frequency grid / liveness analysis.")
+
+        # Rule C: High-Confidence Facial Deepfake Manipulation
         if s_s >= 0.85:
             escalated = True
-            final_score = max(final_score, 82.0)
+            final_score = max(final_score, 85.0)
             escalation_reasons.append("High-confidence synthetic facial manipulation detected in visual frames.")
 
-        # Rule C: Severe Passive Liveness Failure (e.g. static photo, zero blinks, frozen face)
-        if s_l >= 0.85:
+        # Rule D: Severe Passive Liveness Failure (e.g. static photo, zero blinks, frozen face)
+        if s_l >= 0.80 and not is_pad_attack:
             escalated = True
             final_score = max(final_score, 78.0)
             escalation_reasons.append("Severe physiological liveness failure: static image or looped playback.")
 
-        # Rule D: Multi-Channel Corroboration (Two or more channels moderately elevated >= 0.50)
+        # Rule E: Multi-Channel Corroboration (Two or more channels moderately elevated >= 0.50)
         elevated_channels = sum([s_s >= 0.50, s_l >= 0.50, s_t >= 0.50])
         if elevated_channels >= 2 and final_score < 75.0:
             escalated = True

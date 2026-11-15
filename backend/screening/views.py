@@ -76,13 +76,15 @@ class ScreeningLiveApiView(APIView):
         now_utc = datetime.now(timezone.utc)
 
         # 1. Parse client telemetry
-        telemetry_raw = request.data.get("telemetry")
+        telemetry_raw = request.data.get("telemetry") or request.data.get("telemetry_payload")
         telemetry_data = {}
         if isinstance(telemetry_raw, str):
             try:
                 telemetry_data = json.loads(telemetry_raw)
             except Exception:
                 telemetry_data = {"raw_input": telemetry_raw}
+        elif isinstance(telemetry_raw, dict):
+            telemetry_data = telemetry_raw
         elif isinstance(telemetry_data, dict):
             telemetry_data = telemetry_raw or {}
 
@@ -149,7 +151,7 @@ class ScreeningLiveApiView(APIView):
 
                     gradcam_filename = f"gradcam_{session.session_id}.jpg"
                     gradcam_path = os.path.join(evidence_dir, gradcam_filename)
-                    gradcam_generator.generate(flagged_crop, gradcam_path)
+                    gradcam_generator.generate(flagged_crop, gradcam_path, score=spatial_score)
                     if os.path.exists(gradcam_path):
                         gradcam_url = f"{settings.MEDIA_URL}evidence/{gradcam_filename}"
                 else:
@@ -172,11 +174,16 @@ class ScreeningLiveApiView(APIView):
             telemetry_score = telemetry_eval["normalised_score"]
 
             # 4. Risk Fusion Engine
+            spatial_metadata = spatial_eval if 'spatial_eval' in locals() else {"notes": spatial_notes}
+            liveness_metadata = liveness_eval if 'liveness_eval' in locals() else {"notes": liveness_notes}
+
             fusion_output = fusion_engine.fuse(
                 spatial_score=spatial_score,
                 liveness_score=liveness_score,
                 telemetry_score=telemetry_score,
-                telemetry_meta=telemetry_eval
+                telemetry_meta=telemetry_eval,
+                spatial_meta=spatial_metadata,
+                liveness_meta=liveness_metadata
             )
 
             # 5. Database Persistence
@@ -201,7 +208,14 @@ class ScreeningLiveApiView(APIView):
                 raw_score=liveness_score / 100.0,
                 normalised_score=liveness_score,
                 flagged=liveness_score >= 50.0,
-                features_json={"notes": liveness_notes}
+                features_json={
+                    "notes": liveness_notes,
+                    "blink_count": liveness_metadata.get("blink_count", 0),
+                    "mean_ear": liveness_metadata.get("mean_ear", 0.0),
+                    "presentation_attack_detected": liveness_metadata.get("presentation_attack_detected", False),
+                    "attack_type": liveness_metadata.get("attack_type"),
+                    "moire_score": liveness_metadata.get("moire_score", 0.0)
+                }
             )
             ChannelResult.objects.create(
                 session=session,
