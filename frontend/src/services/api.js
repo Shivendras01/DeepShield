@@ -64,13 +64,18 @@ export const api = {
   },
 
   // Submit officer decision (Approve / Reject)
-  async submitReview(sessionId, { action, notes }) {
+  async submitReview(sessionId, { action, decision, notes }) {
+    const normalizedDecision = decision || (action === 'APPROVE' || action === 'APPROVED' ? 'APPROVED' : 'REJECTED');
     const res = await fetch(`${API_BASE_URL}/sessions/${sessionId}/review/`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ action, notes }),
+      body: JSON.stringify({ 
+        decision: normalizedDecision, 
+        action: action || normalizedDecision, 
+        notes 
+      }),
     });
     const data = await res.json();
     if (!res.ok) {

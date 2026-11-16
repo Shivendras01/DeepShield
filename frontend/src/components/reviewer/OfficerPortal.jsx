@@ -64,14 +64,13 @@ export default function OfficerPortal({ initialSessionId }) {
     }
   };
 
-  // Filter logic
+  // Filter logic: Three-tier policy routing (<25 auto-approved, 25-60 review, >60 auto-rejected)
   const sessionList = Array.isArray(sessions) ? sessions : [];
   const filteredSessions = sessionList.filter((s) => {
-    const score = s.fusion_score ?? s.composite_score ?? 0;
-    const band = s.risk_band || 'LOW';
-    if (filter === 'REQUIRES_REVIEW') return band === 'GUARDED' || band === 'ELEVATED' || (score >= 25 && score < 75);
-    if (filter === 'HIGH_RISK') return band === 'HIGH' || score >= 75;
-    if (filter === 'APPROVED') return s.status === 'APPROVED' || band === 'LOW';
+    const score = s.fused_score ?? s.fusion_score ?? s.composite_score ?? 0;
+    if (filter === 'REQUIRES_REVIEW') return score >= 25.0 && score <= 60.0;
+    if (filter === 'AUTO_APPROVED') return score < 25.0;
+    if (filter === 'AUTO_REJECTED') return score > 60.0;
     return true;
   });
 
@@ -114,7 +113,7 @@ export default function OfficerPortal({ initialSessionId }) {
             </button>
           </div>
 
-          {/* Filter Pills */}
+          {/* Three-Tier Policy Filter Tabs */}
           <div className="flex items-center space-x-2 overflow-x-auto pb-1 text-xs">
             <button
               onClick={() => setFilter('ALL')}
@@ -124,7 +123,7 @@ export default function OfficerPortal({ initialSessionId }) {
                   : 'bg-canvas-card text-ink-muted hover:text-ink border border-canvas-border'
               }`}
             >
-              All Sessions ({sessions.length})
+              All Records ({sessions.length})
             </button>
 
             <button
@@ -135,29 +134,29 @@ export default function OfficerPortal({ initialSessionId }) {
                   : 'bg-canvas-card text-ink-muted hover:text-ink border border-canvas-border'
               }`}
             >
-              Manual Review Queue (25–74)
+              Pending Review (25–60)
             </button>
 
             <button
-              onClick={() => setFilter('HIGH_RISK')}
+              onClick={() => setFilter('AUTO_APPROVED')}
               className={`px-3 py-1.5 rounded-lg font-semibold transition-all ${
-                filter === 'HIGH_RISK'
-                  ? 'bg-wine-bank text-white shadow-soft-sm'
-                  : 'bg-canvas-card text-ink-muted hover:text-ink border border-canvas-border'
-              }`}
-            >
-              High Risk / Injections (75+)
-            </button>
-
-            <button
-              onClick={() => setFilter('APPROVED')}
-              className={`px-3 py-1.5 rounded-lg font-semibold transition-all ${
-                filter === 'APPROVED'
+                filter === 'AUTO_APPROVED'
                   ? 'bg-emerald-bank text-white shadow-soft-sm'
                   : 'bg-canvas-card text-ink-muted hover:text-ink border border-canvas-border'
               }`}
             >
-              Approved (Low Risk)
+              Auto-Approved (&lt; 25)
+            </button>
+
+            <button
+              onClick={() => setFilter('AUTO_REJECTED')}
+              className={`px-3 py-1.5 rounded-lg font-semibold transition-all ${
+                filter === 'AUTO_REJECTED'
+                  ? 'bg-wine-bank text-white shadow-soft-sm'
+                  : 'bg-canvas-card text-ink-muted hover:text-ink border border-canvas-border'
+              }`}
+            >
+              Auto-Rejected (&gt; 60)
             </button>
           </div>
 
@@ -189,8 +188,10 @@ export default function OfficerPortal({ initialSessionId }) {
                   </thead>
                   <tbody className="divide-y divide-canvas-border text-xs">
                     {filteredSessions.map((s) => {
-                      const score = s.fusion_score ?? s.composite_score ?? 0;
-                      const band = s.risk_band || 'LOW';
+                      const score = s.fused_score ?? s.fusion_score ?? s.composite_score ?? 0;
+                      const isAutoApproved = score < 25.0;
+                      const isAutoRejected = score > 60.0;
+                      const isPendingReview = score >= 25.0 && score <= 60.0 && s.status === 'PENDING';
 
                       return (
                         <tr 
@@ -205,21 +206,34 @@ export default function OfficerPortal({ initialSessionId }) {
                             {s.created_at ? s.created_at.slice(0, 19).replace('T', ' ') : 'Just now'}
                           </td>
                           <td className="py-3.5 px-4">
-                            <span className="px-2 py-0.5 rounded-full bg-canvas-subtle border border-canvas-border text-[10px] font-bold text-ink-muted uppercase">
-                              {s.status}
-                            </span>
+                            {isAutoApproved ? (
+                              <span className="px-2.5 py-0.5 rounded-full bg-emerald-soft border border-emerald-border text-[10px] font-bold text-emerald-bank uppercase">
+                                AUTO-APPROVED
+                              </span>
+                            ) : isAutoRejected ? (
+                              <span className="px-2.5 py-0.5 rounded-full bg-wine-soft border border-wine-border text-[10px] font-bold text-wine-bank uppercase">
+                                AUTO-REJECTED
+                              </span>
+                            ) : isPendingReview ? (
+                              <span className="px-2.5 py-0.5 rounded-full bg-amber-soft border border-amber-border text-[10px] font-bold text-amber-bank uppercase animate-pulse">
+                                PENDING REVIEW
+                              </span>
+                            ) : (
+                              <span className="px-2.5 py-0.5 rounded-full bg-canvas-subtle border border-canvas-border text-[10px] font-bold text-ink uppercase">
+                                {s.status}
+                              </span>
+                            )}
                           </td>
                           <td className="py-3.5 px-4 font-mono font-bold text-ink">
                             {score.toFixed(1)} / 100
                           </td>
                           <td className="py-3.5 px-4">
                             <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border uppercase tracking-wider ${
-                              band === 'HIGH' ? 'bg-wine-soft text-wine-bank border-wine-border' :
-                              band === 'ELEVATED' ? 'bg-orange-50 text-orange-800 border-orange-200' :
-                              band === 'GUARDED' ? 'bg-amber-soft text-amber-bank border-amber-border' :
+                              isAutoRejected ? 'bg-wine-soft text-wine-bank border-wine-border' :
+                              isPendingReview ? 'bg-amber-soft text-amber-bank border-amber-border' :
                               'bg-emerald-soft text-emerald-bank border-emerald-border'
                             }`}>
-                              {band}
+                              {isAutoRejected ? 'HIGH RISK' : isPendingReview ? 'GUARDED' : 'LOW RISK'}
                             </span>
                           </td>
                           <td className="py-3.5 px-4 text-right">
@@ -228,9 +242,13 @@ export default function OfficerPortal({ initialSessionId }) {
                                 e.stopPropagation();
                                 setSelectedSessionId(s.session_id);
                               }}
-                              className="px-3 py-1.5 rounded-lg bg-canvas-subtle group-hover:bg-emerald-bank group-hover:text-white text-ink text-xs font-semibold border border-canvas-border transition-all inline-flex items-center space-x-1"
+                              className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all inline-flex items-center space-x-1 ${
+                                isPendingReview
+                                  ? 'bg-amber-50 hover:bg-amber-bank hover:text-white text-amber-bank border-amber-border font-bold'
+                                  : 'bg-canvas-subtle group-hover:bg-canvas-border text-ink border-canvas-border'
+                              }`}
                             >
-                              <span>Inspect Dossier</span>
+                              <span>{isPendingReview ? 'Review & Decide' : 'Inspect Dossier'}</span>
                               <ArrowRight className="w-3 h-3" />
                             </button>
                           </td>

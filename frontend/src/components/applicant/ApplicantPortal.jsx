@@ -11,20 +11,46 @@ import {
   Video, 
   FileVideo,
   Sparkles,
-  Info
+  Info,
+  XCircle,
+  User,
+  CreditCard,
+  Phone,
+  ChevronRight,
+  ShieldAlert,
+  Lock,
+  ArrowLeft,
+  Sun,
+  Eye,
+  Ban,
+  CheckSquare,
+  Square
 } from 'lucide-react';
 import { api } from '../../services/api';
 
 export default function ApplicantPortal({ onScreeningComplete }) {
-  // Candidate form state
+  // Navigation Flow: 'DETAILS' | 'INSTRUCTIONS' | 'RECORDING' | 'RESULT'
+  const [currentStep, setCurrentStep] = useState('DETAILS');
+
+  // Candidate KYC Form Details
   const [applicantName, setApplicantName] = useState('Shivendra Singh');
-  const [applicationId, setApplicationId] = useState('KYC-2026-9041');
-  const [mode, setMode] = useState('webcam'); // 'webcam' | 'upload'
+  const [idType, setIdType] = useState('Aadhaar Card');
+  const [idNumber, setIdNumber] = useState('XXXX-XXXX-9041');
+  const [mobileNumber, setMobileNumber] = useState('+91 98765 43210');
+  const [applicationId, setApplicationId] = useState(() => `DS-KYC-${Math.floor(100000 + Math.random() * 900000)}`);
+  const [consentGiven, setConsentGiven] = useState(true);
+
+  // Instructions Page State (Mandatory checkbox before proceeding to video)
+  const [instructionsAcknowledged, setInstructionsAcknowledged] = useState(false);
+
+  // Capture mode: 'webcam' | 'upload'
+  const [mode, setMode] = useState('webcam');
   
   // Webcam recording state
   const [webcamStream, setWebcamStream] = useState(null);
   const [isRecording, setIsRecording] = useState(false);
   const [countdown, setCountdown] = useState(null);
+  const [recordSecondsLeft, setRecordSecondsLeft] = useState(5);
   const [recordedBlob, setRecordedBlob] = useState(null);
   const [recordedVideoUrl, setRecordedVideoUrl] = useState(null);
   const [recordedMimeType, setRecordedMimeType] = useState('video/webm');
@@ -35,26 +61,23 @@ export default function ApplicantPortal({ onScreeningComplete }) {
 
   // Submission & Pipeline progress state
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [screeningStage, setScreeningStage] = useState(0); // 0 to 4
   const [applicantResult, setApplicantResult] = useState(null);
   const [submissionError, setSubmissionError] = useState(null);
 
   const videoRef = useRef(null);
   const mediaRecorderRef = useRef(null);
   const recordedChunksRef = useRef([]);
-
-  // Telemetry timestamps collection
   const frameTimestampsRef = useRef([]);
 
-  // Initialize / Stop webcam
+  // Initialize or teardown camera only on the RECORDING step when in webcam mode
   useEffect(() => {
-    if (mode === 'webcam' && !applicantResult) {
+    if (currentStep === 'RECORDING' && mode === 'webcam') {
       startCamera();
     } else {
       stopCamera();
     }
     return () => stopCamera();
-  }, [mode, applicantResult]);
+  }, [currentStep, mode]);
 
   const startCamera = async () => {
     try {
@@ -68,7 +91,7 @@ export default function ApplicantPortal({ onScreeningComplete }) {
         videoRef.current.srcObject = stream;
       }
     } catch (err) {
-      setCameraError('Camera access required. Please enable webcam permissions or switch to File Upload mode.');
+      setCameraError('Camera access required. Please enable webcam permissions in your browser or switch to File Upload mode.');
     }
   };
 
@@ -79,9 +102,9 @@ export default function ApplicantPortal({ onScreeningComplete }) {
     }
   };
 
-  // Start 5-second recording
+  // Start 5-second recording with 3-2-1 countdown
   const handleStartRecording = () => {
-    if (!webcamStream) return;
+    if (!webcamStream || isRecording) return;
     recordedChunksRef.current = [];
     frameTimestampsRef.current = [];
 
@@ -102,8 +125,9 @@ export default function ApplicantPortal({ onScreeningComplete }) {
 
   const startMediaRecorder = () => {
     setIsRecording(true);
-    
-    // Choose best supported codec (prefer MP4 on Chromium/Windows for seamless OpenCV compatibility)
+    setRecordSecondsLeft(5);
+
+    // Choose best supported codec
     let mimeType = 'video/webm';
     const candidates = [
       'video/mp4;codecs=avc1',
@@ -138,43 +162,43 @@ export default function ApplicantPortal({ onScreeningComplete }) {
       setRecordedBlob(blob);
       setRecordedVideoUrl(URL.createObjectURL(blob));
       setIsRecording(false);
+      setRecordSecondsLeft(0);
+
+      // AUTO-SUBMIT IMMEDIATELY ON 5-SECOND COMPLETION!
+      submitVerificationVideo(blob, mimeType);
     };
 
-    recorder.start(100); // 100ms slices to capture jitter timestamps
+    recorder.start(100);
 
-    // Automatically stop after 5 seconds
-    setTimeout(() => {
-      if (recorder.state === 'recording') {
-        recorder.stop();
+    // Precise 5-second countdown timer that automatically stops the recorder
+    let secondsLeft = 5;
+    const recordingInterval = setInterval(() => {
+      secondsLeft -= 1;
+      setRecordSecondsLeft(secondsLeft);
+      if (secondsLeft <= 0) {
+        clearInterval(recordingInterval);
+        if (recorder.state === 'recording') {
+          recorder.stop();
+        }
       }
-    }, 5200);
+    }, 1000);
   };
 
-  const handleRetake = () => {
-    setRecordedBlob(null);
-    setRecordedVideoUrl(null);
-    setSelectedFile(null);
-    startCamera();
-  };
+  // Submit video to screening pipeline
+  const submitVerificationVideo = async (blobOverride = null, mimeOverride = null) => {
+    const blobToUse = blobOverride || recordedBlob;
+    const mimeToUse = mimeOverride || recordedMimeType;
 
-  // Submit screening session
-  const handleSubmit = async () => {
-    const isMp4 = recordedMimeType.includes('mp4');
+    const isMp4 = mimeToUse.includes('mp4');
     const filename = isMp4 ? 'webcam_kyc.mp4' : 'webcam_kyc.webm';
     const videoFile = mode === 'webcam' 
-      ? new File([recordedBlob], filename, { type: recordedMimeType })
+      ? new File([blobToUse], filename, { type: mimeToUse })
       : selectedFile;
 
     if (!videoFile) return;
 
     setIsSubmitting(true);
     setSubmissionError(null);
-    setScreeningStage(1);
-
-    // Visual stepper progression
-    const stageTimer1 = setTimeout(() => setScreeningStage(2), 600);
-    const stageTimer2 = setTimeout(() => setScreeningStage(3), 1300);
-    const stageTimer3 = setTimeout(() => setScreeningStage(4), 2100);
 
     try {
       const formData = new FormData();
@@ -182,29 +206,37 @@ export default function ApplicantPortal({ onScreeningComplete }) {
       formData.append('client_identity', JSON.stringify({
         applicant_name: applicantName,
         application_id: applicationId,
+        id_type: idType,
+        id_number: idNumber,
+        mobile: mobileNumber,
         client_timestamp: new Date().toISOString(),
       }));
 
       // Gather browser telemetry
+      const isFileUpload = mode === 'upload';
+      const deviceLabel = isFileUpload
+        ? 'File Upload Source'
+        : (webcamStream?.getVideoTracks()[0]?.label || 'Integrated Webcam');
+
       const telemetry = {
         user_agent: navigator.userAgent,
         screen_resolution: `${window.screen.width}x${window.screen.height}`,
-        camera_label: webcamStream ? webcamStream.getVideoTracks()[0]?.label || 'Integrated Webcam' : 'File Upload Source',
-        frame_timestamps: frameTimestampsRef.current.length > 5 ? frameTimestampsRef.current : undefined,
+        camera_label: deviceLabel,
+        device_label: deviceLabel,
+        is_file_upload: isFileUpload,
+        timestamps_ms: isFileUpload ? [] : (frameTimestampsRef.current.length > 5 ? frameTimestampsRef.current : []),
+        frame_timestamps: isFileUpload ? [] : (frameTimestampsRef.current.length > 5 ? frameTimestampsRef.current : []),
       };
       const telemetryStr = JSON.stringify(telemetry);
       formData.append('telemetry', telemetryStr);
       formData.append('telemetry_payload', telemetryStr);
+      formData.append('is_file_upload', isFileUpload ? 'true' : 'false');
 
       const response = await api.submitScreening(formData);
       
-      clearTimeout(stageTimer1);
-      clearTimeout(stageTimer2);
-      clearTimeout(stageTimer3);
-      setScreeningStage(4);
-
-      // Save applicant-safe view
+      // Save applicant-safe view and transition to RESULT screen
       setApplicantResult(response.applicant_view);
+      setCurrentStep('RESULT');
 
       // Notify parent to refresh officer list in background
       if (onScreeningComplete) {
@@ -217,378 +249,679 @@ export default function ApplicantPortal({ onScreeningComplete }) {
     }
   };
 
-  const handleReset = () => {
+  const handleRetry = () => {
     setApplicantResult(null);
     setRecordedBlob(null);
     setRecordedVideoUrl(null);
     setSelectedFile(null);
-    setScreeningStage(0);
     setSubmissionError(null);
-    setApplicationId(`KYC-2026-${Math.floor(1000 + Math.random() * 9000)}`);
+    setCurrentStep('RECORDING');
+  };
+
+  const handleStartFresh = () => {
+    setApplicantResult(null);
+    setRecordedBlob(null);
+    setRecordedVideoUrl(null);
+    setSelectedFile(null);
+    setSubmissionError(null);
+    setInstructionsAcknowledged(false);
+    setApplicationId(`DS-KYC-${Math.floor(100000 + Math.random() * 900000)}`);
+    setCurrentStep('DETAILS');
   };
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">
       
-      {/* Top Banner & Context */}
-      <div className="mb-8">
-        <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-emerald-soft border border-emerald-border text-emerald-bank text-xs font-semibold mb-3">
+      {/* Top Header Badge */}
+      <div className="mb-6">
+        <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-emerald-soft border border-emerald-border text-emerald-bank text-xs font-semibold mb-2">
           <ShieldCheck className="w-3.5 h-3.5" />
-          <span>Automated e-KYC Verification</span>
+          <span>DeepShield Video e-KYC Verification</span>
         </div>
-        <h1 className="text-2xl sm:text-3xl font-extrabold text-ink tracking-tight">
-          Applicant Identity Screening
-        </h1>
-        <p className="text-sm text-ink-muted mt-1.5 max-w-2xl">
-          This portal simulates the customer-facing video verification step in a digital banking application. Complete the 5-second biometric recording below.
-        </p>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-ink tracking-tight">
+            Digital Identity Screening
+          </h1>
+          <div className="flex items-center space-x-2 text-xs font-mono bg-canvas-card px-3 py-1.5 rounded-xl border border-canvas-border shadow-soft-sm text-ink-muted">
+            <span className="text-[10px] uppercase font-bold text-ink-faint">Application Ref:</span>
+            <span className="font-bold text-emerald-bank">{applicationId}</span>
+          </div>
+        </div>
       </div>
 
-      {/* Main Content Area */}
-      {!applicantResult ? (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          
-          {/* Left Column: Form Details & Instructions */}
-          <div className="lg:col-span-5 space-y-5">
-            <div className="p-5 rounded-2xl bg-canvas-card border border-canvas-border shadow-soft-sm space-y-4">
-              <h2 className="text-sm font-bold text-ink uppercase tracking-wider text-[11px]">
-                Application Details
+      {/* ============================================================== */}
+      {/* STEP 1: APPLICANT ONBOARDING DETAILS FORM                      */}
+      {/* ============================================================== */}
+      {currentStep === 'DETAILS' && (
+        <div className="max-w-2xl mx-auto">
+          <div className="p-6 sm:p-8 rounded-3xl bg-canvas-card border border-canvas-border shadow-soft-md space-y-6">
+            <div className="border-b border-canvas-border pb-4">
+              <span className="text-[11px] font-bold text-emerald-bank uppercase tracking-wider block mb-1">
+                Step 1 of 3: Applicant Details
+              </span>
+              <h2 className="text-lg font-bold text-ink flex items-center space-x-2">
+                <User className="w-5 h-5 text-emerald-bank" />
+                <span>Identity Verification Form</span>
               </h2>
-              
+              <p className="text-xs text-ink-muted mt-1">
+                Enter your official identity details as they appear on your government document. A unique reference code has been assigned to your verification session.
+              </p>
+            </div>
+
+            <div className="space-y-4">
+              {/* Full Legal Name */}
               <div>
                 <label className="block text-xs font-semibold text-ink-muted mb-1.5">
-                  Applicant Full Name
+                  Full Legal Name (as per Govt ID)
                 </label>
-                <input
-                  type="text"
-                  value={applicantName}
-                  onChange={(e) => setApplicantName(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl bg-canvas-subtle border border-canvas-border text-sm text-ink font-medium focus:outline-none focus:border-emerald-bank transition-colors"
-                  placeholder="e.g. Shivendra Singh"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-ink-muted mb-1.5">
-                  Application Reference ID
-                </label>
-                <input
-                  type="text"
-                  value={applicationId}
-                  onChange={(e) => setApplicationId(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl bg-canvas-subtle border border-canvas-border text-xs font-mono text-ink-muted focus:outline-none focus:border-emerald-bank transition-colors"
-                />
-              </div>
-
-              {/* Mode Selector Tabs */}
-              <div className="pt-2 border-t border-canvas-border">
-                <label className="block text-xs font-semibold text-ink-muted mb-2">
-                  Capture Source
-                </label>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    onClick={() => { setMode('webcam'); handleRetake(); }}
-                    className={`flex items-center justify-center space-x-1.5 py-2 px-3 rounded-xl text-xs font-semibold border transition-all ${
-                      mode === 'webcam'
-                        ? 'bg-emerald-soft text-emerald-bank border-emerald-border'
-                        : 'bg-canvas-subtle text-ink-muted border-canvas-border hover:text-ink'
-                    }`}
-                  >
-                    <Camera className="w-3.5 h-3.5" />
-                    <span>Live Webcam</span>
-                  </button>
-
-                  <button
-                    onClick={() => { setMode('upload'); handleRetake(); }}
-                    className={`flex items-center justify-center space-x-1.5 py-2 px-3 rounded-xl text-xs font-semibold border transition-all ${
-                      mode === 'upload'
-                        ? 'bg-emerald-soft text-emerald-bank border-emerald-border'
-                        : 'bg-canvas-subtle text-ink-muted border-canvas-border hover:text-ink'
-                    }`}
-                  >
-                    <Upload className="w-3.5 h-3.5" />
-                    <span>Sample File</span>
-                  </button>
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={applicantName}
+                    onChange={(e) => setApplicantName(e.target.value)}
+                    required
+                    placeholder="e.g. Shivendra Singh"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-canvas-subtle border border-canvas-border text-sm text-ink font-medium focus:outline-none focus:border-emerald-bank transition-colors"
+                  />
                 </div>
               </div>
-            </div>
 
-            {/* Checklist Tips */}
-            <div className="p-4 rounded-2xl bg-canvas-subtle border border-canvas-border space-y-2.5 text-xs text-ink-muted">
-              <div className="flex items-center space-x-2 text-ink font-semibold">
-                <Info className="w-4 h-4 text-emerald-bank" />
-                <span>Verification Guidelines</span>
-              </div>
-              <ul className="space-y-1.5 pl-6 list-disc text-[11px] leading-relaxed">
-                <li>Position face clearly within the biometric oval guide.</li>
-                <li>Ensure well-lit conditions with no glare or harsh shadows.</li>
-                <li>Blink naturally and avoid wearing sunglasses or face masks.</li>
-              </ul>
-            </div>
-          </div>
-
-          {/* Right Column: Capture Studio & Video Interface */}
-          <div className="lg:col-span-7">
-            <div className="p-5 rounded-2xl bg-canvas-card border border-canvas-border shadow-soft-sm flex flex-col justify-between min-h-[420px]">
-              
-              {/* Studio Canvas */}
-              <div className="relative w-full aspect-video rounded-xl bg-ink/5 border border-canvas-border overflow-hidden flex items-center justify-center">
-                
-                {mode === 'webcam' ? (
-                  <>
-                    {!recordedVideoUrl ? (
-                      <>
-                        <video
-                          ref={videoRef}
-                          autoPlay
-                          playsInline
-                          muted
-                          className="w-full h-full object-cover transform -scale-x-100"
-                        />
-                        
-                        {/* Oval Biometric Facial Guide Overlay */}
-                        <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-                          <div className={`w-44 h-56 rounded-[50%] border-2 transition-all duration-300 ${
-                            isRecording 
-                              ? 'border-emerald-500 shadow-[0_0_24px_rgba(16,185,129,0.35)] animate-pulse' 
-                              : 'border-canvas-card/80 border-dashed'
-                          }`} />
-                        </div>
-
-                        {/* 3-2-1 Countdown Overlay */}
-                        {countdown !== null && (
-                          <div className="absolute inset-0 bg-ink/40 backdrop-blur-sm flex items-center justify-center">
-                            <span className="text-7xl font-extrabold text-white animate-ping">
-                              {countdown}
-                            </span>
-                          </div>
-                        )}
-
-                        {/* Recording Progress Badge */}
-                        {isRecording && (
-                          <div className="absolute top-4 left-4 flex items-center space-x-2 px-3 py-1 rounded-full bg-red-600 text-white text-xs font-semibold shadow-md animate-pulse">
-                            <span className="w-2 h-2 rounded-full bg-white" />
-                            <span>Recording (5s)...</span>
-                          </div>
-                        )}
-                      </>
-                    ) : (
-                      <video
-                        src={recordedVideoUrl}
-                        controls
-                        autoPlay
-                        loop
-                        className="w-full h-full object-cover"
-                      />
-                    )}
-
-                    {cameraError && (
-                      <div className="absolute inset-0 p-6 bg-canvas-card/95 flex flex-col items-center justify-center text-center">
-                        <AlertCircle className="w-8 h-8 text-amber-bank mb-2" />
-                        <p className="text-xs text-ink-muted max-w-sm mb-3">{cameraError}</p>
-                        <button
-                          onClick={startCamera}
-                          className="px-3 py-1.5 rounded-lg bg-emerald-soft text-emerald-bank text-xs font-semibold border border-emerald-border"
-                        >
-                          Retry Camera
-                        </button>
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  /* File Upload Studio */
-                  <div className="w-full h-full flex flex-col items-center justify-center p-6 text-center">
-                    {selectedFile ? (
-                      <div className="space-y-3">
-                        <FileVideo className="w-12 h-12 text-emerald-bank mx-auto animate-bounce" />
-                        <div>
-                          <p className="text-xs font-bold text-ink">{selectedFile.name}</p>
-                          <p className="text-[11px] text-ink-muted">
-                            {(selectedFile.size / (1024 * 1024)).toFixed(2)} MB • Ready for screening
-                          </p>
-                        </div>
-                        <button
-                          onClick={() => setSelectedFile(null)}
-                          className="text-xs text-ink-muted hover:text-wine-bank underline"
-                        >
-                          Choose a different file
-                        </button>
-                      </div>
-                    ) : (
-                      <label className="cursor-pointer group flex flex-col items-center space-y-3">
-                        <div className="w-12 h-12 rounded-full bg-emerald-soft flex items-center justify-center text-emerald-bank group-hover:scale-105 transition-transform">
-                          <Upload className="w-6 h-6" />
-                        </div>
-                        <div>
-                          <p className="text-xs font-bold text-ink">Upload e-KYC Test Clip</p>
-                          <p className="text-[11px] text-ink-muted">MP4 or WebM video file (max 25MB)</p>
-                        </div>
-                        <input
-                          type="file"
-                          accept="video/mp4,video/webm"
-                          className="hidden"
-                          onChange={(e) => {
-                            if (e.target.files && e.target.files[0]) {
-                              setSelectedFile(e.target.files[0]);
-                            }
-                          }}
-                        />
-                      </label>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {/* Action Buttons */}
-              <div className="mt-4 pt-4 border-t border-canvas-border flex items-center justify-between">
+              {/* Govt ID Type & ID Number */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  {mode === 'webcam' && recordedVideoUrl && (
-                    <button
-                      onClick={handleRetake}
-                      disabled={isSubmitting}
-                      className="flex items-center space-x-1.5 text-xs font-semibold text-ink-muted hover:text-ink transition-colors"
-                    >
-                      <RefreshCw className="w-3.5 h-3.5" />
-                      <span>Retake Clip</span>
-                    </button>
-                  )}
+                  <label className="block text-xs font-semibold text-ink-muted mb-1.5">
+                    Government ID Document
+                  </label>
+                  <select
+                    value={idType}
+                    onChange={(e) => setIdType(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-canvas-subtle border border-canvas-border text-xs text-ink font-medium focus:outline-none focus:border-emerald-bank transition-colors"
+                  >
+                    <option value="Aadhaar Card">Aadhaar Card (UIDAI)</option>
+                    <option value="PAN Card">PAN Card (Income Tax)</option>
+                    <option value="Passport">Passport</option>
+                    <option value="Voter ID">Voter ID (Election Commission)</option>
+                  </select>
                 </div>
 
-                <div className="flex items-center space-x-3">
-                  {mode === 'webcam' && !recordedBlob && (
-                    <button
-                      onClick={handleStartRecording}
-                      disabled={isRecording || countdown !== null || !webcamStream}
-                      className="px-4 py-2 rounded-xl bg-emerald-bank hover:bg-emerald-hover text-white text-xs font-semibold shadow-soft-sm transition-all flex items-center space-x-1.5 disabled:opacity-50"
-                    >
-                      <Video className="w-3.5 h-3.5 text-emerald-soft" />
-                      <span>{isRecording ? 'Capturing Video...' : 'Start 5s Recording'}</span>
-                    </button>
-                  )}
-
-                  {(recordedBlob || selectedFile) && (
-                    <button
-                      onClick={handleSubmit}
-                      disabled={isSubmitting}
-                      className="px-5 py-2.5 rounded-xl bg-emerald-bank hover:bg-emerald-hover text-white text-xs font-semibold shadow-soft-md transition-all flex items-center space-x-2 disabled:opacity-50"
-                    >
-                      {isSubmitting ? (
-                        <>
-                          <RefreshCw className="w-4 h-4 animate-spin text-emerald-soft" />
-                          <span>Screening Video...</span>
-                        </>
-                      ) : (
-                        <>
-                          <span>Submit for Verification</span>
-                          <ArrowRight className="w-4 h-4 text-emerald-soft" />
-                        </>
-                      )}
-                    </button>
-                  )}
+                <div>
+                  <label className="block text-xs font-semibold text-ink-muted mb-1.5">
+                    Document Number
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={idNumber}
+                      onChange={(e) => setIdNumber(e.target.value)}
+                      required
+                      placeholder="e.g. 4829-8472-9041"
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-canvas-subtle border border-canvas-border text-xs font-mono text-ink focus:outline-none focus:border-emerald-bank transition-colors"
+                    />
+                  </div>
                 </div>
               </div>
 
-            </div>
-          </div>
+              {/* Mobile Number / Contact */}
+              <div>
+                <label className="block text-xs font-semibold text-ink-muted mb-1.5">
+                  Registered Mobile Number
+                </label>
+                <div className="relative">
+                  <input
+                    type="tel"
+                    value={mobileNumber}
+                    onChange={(e) => setMobileNumber(e.target.value)}
+                    required
+                    placeholder="+91 98765 43210"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-canvas-subtle border border-canvas-border text-xs font-mono text-ink focus:outline-none focus:border-emerald-bank transition-colors"
+                  />
+                </div>
+              </div>
 
-        </div>
-      ) : null}
-
-      {/* Real-Time Screening Progress Stepper */}
-      {isSubmitting && (
-        <div className="mt-6 p-6 rounded-2xl bg-canvas-card border border-canvas-border shadow-soft-md space-y-4">
-          <div className="flex items-center justify-between text-xs font-bold text-ink">
-            <span>Automated Forensic Pipeline Ingestion</span>
-            <span className="text-emerald-bank">Step {screeningStage} of 4</span>
-          </div>
-
-          <div className="w-full bg-canvas-subtle rounded-full h-2 overflow-hidden border border-canvas-border">
-            <div 
-              className="bg-emerald-bank h-full transition-all duration-500 rounded-full"
-              style={{ width: `${(screeningStage / 4) * 100}%` }}
-            />
-          </div>
-
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] text-ink-muted">
-            <div className={`p-2 rounded-lg ${screeningStage >= 1 ? 'text-emerald-bank font-semibold bg-emerald-soft' : ''}`}>
-              1. OpenCV Face Striding
+              {/* Consent Toggle */}
+              <div className="pt-2">
+                <label className="flex items-start space-x-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={consentGiven}
+                    onChange={(e) => setConsentGiven(e.target.checked)}
+                    className="mt-1 w-4 h-4 rounded text-emerald-bank border-canvas-border focus:ring-emerald-bank"
+                  />
+                  <span className="text-xs text-ink-muted leading-relaxed">
+                    I consent to video biometric liveness screening and facial presentation attack analysis under ISO/IEC 30107 standards for banking identity verification.
+                  </span>
+                </label>
+              </div>
             </div>
-            <div className={`p-2 rounded-lg ${screeningStage >= 2 ? 'text-emerald-bank font-semibold bg-emerald-soft' : ''}`}>
-              2. Passive Liveness (EAR)
-            </div>
-            <div className={`p-2 rounded-lg ${screeningStage >= 3 ? 'text-emerald-bank font-semibold bg-emerald-soft' : ''}`}>
-              3. EfficientNet-B0 Saliency
-            </div>
-            <div className={`p-2 rounded-lg ${screeningStage >= 4 ? 'text-emerald-bank font-semibold bg-emerald-soft' : ''}`}>
-              4. Multi-Channel Fusion
+
+            {/* Proceed to Instructions CTA */}
+            <div className="pt-4 border-t border-canvas-border flex items-center justify-between">
+              <div className="flex items-center space-x-1.5 text-xs text-ink-faint">
+                <Lock className="w-3.5 h-3.5 text-emerald-bank" />
+                <span>256-Bit Encrypted Session</span>
+              </div>
+
+              <button
+                onClick={() => setCurrentStep('INSTRUCTIONS')}
+                disabled={!applicantName.trim() || !consentGiven}
+                className="px-6 py-3 rounded-xl bg-emerald-bank hover:bg-emerald-hover text-white text-xs font-bold shadow-soft-md transition-all flex items-center space-x-2 disabled:opacity-50"
+              >
+                <span>Proceed to Instructions</span>
+                <ChevronRight className="w-4 h-4 text-emerald-soft" />
+              </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Error Alert */}
-      {submissionError && (
-        <div className="mt-6 p-4 rounded-xl bg-wine-soft border border-wine-border text-wine-bank text-xs flex items-center space-x-2">
-          <AlertCircle className="w-4 h-4 flex-shrink-0" />
-          <span>{submissionError}</span>
+      {/* ============================================================== */}
+      {/* STEP 2: INSTRUCTIONS & GUIDELINES (SEPARATE DEDICATED PAGE)    */}
+      {/* ============================================================== */}
+      {currentStep === 'INSTRUCTIONS' && (
+        <div className="max-w-3xl mx-auto space-y-6">
+          <div className="p-6 sm:p-8 rounded-3xl bg-canvas-card border border-canvas-border shadow-soft-md space-y-6">
+            
+            {/* Header */}
+            <div className="border-b border-canvas-border pb-4 flex items-center justify-between">
+              <div>
+                <span className="text-[11px] font-bold text-emerald-bank uppercase tracking-wider block mb-1">
+                  Step 2 of 3: Biometric Instructions & Preparation
+                </span>
+                <h2 className="text-xl sm:text-2xl font-black text-ink tracking-tight">
+                  Important Guidelines Before Recording
+                </h2>
+                <p className="text-xs sm:text-sm text-ink-muted mt-1 max-w-xl">
+                  Please read the 4 guidelines below to ensure your 5-second video verification passes without issues.
+                </p>
+              </div>
+              
+              <button
+                onClick={() => setCurrentStep('DETAILS')}
+                className="text-xs font-semibold text-ink-muted hover:text-ink transition-colors flex items-center space-x-1"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span>Back</span>
+              </button>
+            </div>
+
+            {/* 4 Spacious Instruction Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              
+              {/* Card 1: Lighting */}
+              <div className="p-5 rounded-2xl bg-canvas-subtle border border-canvas-border space-y-2.5">
+                <div className="w-10 h-10 rounded-xl bg-amber-soft border border-amber-border flex items-center justify-center text-amber-bank">
+                  <Sun className="w-5 h-5" />
+                </div>
+                <h3 className="text-sm font-bold text-ink">
+                  1. Clean & Even Lighting
+                </h3>
+                <p className="text-xs text-ink-muted leading-relaxed">
+                  Sit facing natural daylight or good indoor light. Avoid strong backlights, harsh shadows, or dark rooms that obscure your facial contours.
+                </p>
+              </div>
+
+              {/* Card 2: Eye Contact & Natural Blinking */}
+              <div className="p-5 rounded-2xl bg-canvas-subtle border border-canvas-border space-y-2.5">
+                <div className="w-10 h-10 rounded-xl bg-emerald-soft border border-emerald-border flex items-center justify-center text-emerald-bank">
+                  <Eye className="w-5 h-5" />
+                </div>
+                <h3 className="text-sm font-bold text-ink">
+                  2. Look Directly & Blink Normally
+                </h3>
+                <p className="text-xs text-ink-muted leading-relaxed">
+                  Look directly at the webcam lens. Blink naturally 1-2 times during the 5 seconds. Do not hold your breath or freeze your eyes unnaturally.
+                </p>
+              </div>
+
+              {/* Card 3: No Accessories or External Screens */}
+              <div className="p-5 rounded-2xl bg-canvas-subtle border border-canvas-border space-y-2.5">
+                <div className="w-10 h-10 rounded-xl bg-wine-soft border border-wine-border flex items-center justify-center text-wine-bank">
+                  <Ban className="w-5 h-5" />
+                </div>
+                <h3 className="text-sm font-bold text-ink">
+                  3. No Sunglasses, Masks, or Screens
+                </h3>
+                <p className="text-xs text-ink-muted leading-relaxed">
+                  Remove sunglasses, tinted spectacles, or face masks. Holding an external phone, tablet, or photo in front of the lens will cause immediate rejection.
+                </p>
+              </div>
+
+              {/* Card 4: 5-Second Passive Duration */}
+              <div className="p-5 rounded-2xl bg-canvas-subtle border border-canvas-border space-y-2.5">
+                <div className="w-10 h-10 rounded-xl bg-blue-soft border border-blue-border flex items-center justify-center text-blue-bank">
+                  <Clock className="w-5 h-5" />
+                </div>
+                <h3 className="text-sm font-bold text-ink">
+                  4. Automated 5-Second Session
+                </h3>
+                <p className="text-xs text-ink-muted leading-relaxed">
+                  No awkward head turns or speech prompts. The session records for 5 seconds and automatically submits without requiring extra clicks.
+                </p>
+              </div>
+
+            </div>
+
+            {/* MANDATORY CHECKMARK */}
+            <div className={`p-4 sm:p-5 rounded-2xl border-2 transition-all ${
+              instructionsAcknowledged 
+                ? 'bg-emerald-soft/50 border-emerald-bank' 
+                : 'bg-canvas-subtle border-canvas-border hover:border-canvas-border/80'
+            }`}>
+              <label className="flex items-start space-x-3.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={instructionsAcknowledged}
+                  onChange={(e) => setInstructionsAcknowledged(e.target.checked)}
+                  className="mt-0.5 w-5 h-5 rounded text-emerald-bank border-canvas-border focus:ring-emerald-bank cursor-pointer"
+                />
+                <div className="space-y-0.5">
+                  <span className="text-xs sm:text-sm font-bold text-ink block">
+                    I have read and understood all the verification instructions
+                  </span>
+                  <span className="text-[11px] text-ink-muted block leading-relaxed">
+                    I confirm that I am sitting in good lighting, directly facing the camera, and ready to record my 5-second video.
+                  </span>
+                </div>
+              </label>
+            </div>
+
+            {/* Navigation Footer */}
+            <div className="pt-2 flex items-center justify-between">
+              <button
+                onClick={() => setCurrentStep('DETAILS')}
+                className="px-4 py-2.5 rounded-xl text-xs font-semibold text-ink-muted hover:text-ink transition-colors flex items-center space-x-1.5"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span>Back to Details</span>
+              </button>
+
+              <button
+                onClick={() => setCurrentStep('RECORDING')}
+                disabled={!instructionsAcknowledged}
+                className="px-6 py-3 rounded-xl bg-emerald-bank hover:bg-emerald-hover text-white text-xs font-bold shadow-soft-md transition-all flex items-center space-x-2 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <span>Proceed to Video Recording</span>
+                <ChevronRight className="w-4 h-4 text-emerald-soft" />
+              </button>
+            </div>
+
+          </div>
         </div>
       )}
 
       {/* ============================================================== */}
-      {/* OUTCOME CARD: STRICTLY DUAL-PERSPECTIVE (NO LEAKED SCORES)      */}
+      {/* STEP 3: UNCLUTTERED VIDEO RECORDING & PROCESSING PAGE          */}
       {/* ============================================================== */}
-      {applicantResult && (
-        <div className="mt-8 max-w-xl mx-auto p-8 rounded-3xl bg-canvas-card border border-canvas-border shadow-soft-lg text-center space-y-6">
+      {currentStep === 'RECORDING' && (
+        <div className="max-w-3xl mx-auto space-y-6">
           
-          {/* Status Icon */}
-          <div className="w-16 h-16 rounded-full mx-auto flex items-center justify-center shadow-soft-sm">
-            {applicantResult.status === 'APPROVED' && (
-              <div className="w-full h-full rounded-full bg-emerald-soft border border-emerald-border flex items-center justify-center text-emerald-bank">
-                <CheckCircle2 className="w-8 h-8" />
-              </div>
-            )}
-            {applicantResult.status === 'UNDER_REVIEW' && (
-              <div className="w-full h-full rounded-full bg-amber-soft border border-amber-border flex items-center justify-center text-amber-bank">
-                <Clock className="w-8 h-8" />
-              </div>
-            )}
-            {applicantResult.status === 'RETRY' && (
-              <div className="w-full h-full rounded-full bg-wine-soft border border-wine-border flex items-center justify-center text-wine-bank">
-                <AlertCircle className="w-8 h-8" />
-              </div>
-            )}
+          {/* Top Back & Mode Switcher Bar */}
+          <div className="flex items-center justify-between">
+            <button
+              onClick={() => { stopCamera(); setCurrentStep('INSTRUCTIONS'); }}
+              disabled={isRecording || isSubmitting}
+              className="text-xs font-semibold text-ink-muted hover:text-ink transition-colors flex items-center space-x-1 disabled:opacity-50"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span>Back to Instructions</span>
+            </button>
+
+            {/* Input Mode Pills */}
+            <div className="flex items-center space-x-1 p-1 rounded-xl bg-canvas-card border border-canvas-border shadow-soft-sm">
+              <button
+                onClick={() => { setMode('webcam'); setSelectedFile(null); setRecordedBlob(null); setRecordedVideoUrl(null); }}
+                disabled={isRecording || isSubmitting}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center space-x-1.5 transition-all ${
+                  mode === 'webcam'
+                    ? 'bg-emerald-soft text-emerald-bank shadow-sm'
+                    : 'text-ink-muted hover:text-ink'
+                }`}
+              >
+                <Camera className="w-3.5 h-3.5" />
+                <span>Live Camera</span>
+              </button>
+
+              <button
+                onClick={() => { setMode('upload'); stopCamera(); setRecordedBlob(null); setRecordedVideoUrl(null); }}
+                disabled={isRecording || isSubmitting}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center space-x-1.5 transition-all ${
+                  mode === 'upload'
+                    ? 'bg-emerald-soft text-emerald-bank shadow-sm'
+                    : 'text-ink-muted hover:text-ink'
+                }`}
+              >
+                <Upload className="w-3.5 h-3.5" />
+                <span>Upload Test Video</span>
+              </button>
+            </div>
           </div>
 
-          {/* Status Message */}
-          <div className="space-y-2">
-            <h2 className="text-xl font-bold text-ink tracking-tight">
-              {applicantResult.status === 'APPROVED' && 'Identity Verification Successful'}
-              {applicantResult.status === 'UNDER_REVIEW' && 'Verification Under Manual Review'}
-              {applicantResult.status === 'RETRY' && 'Verification Inconclusive'}
+          {/* BIG FONT INSTRUCTION BANNER */}
+          <div className="p-6 sm:p-7 rounded-3xl bg-canvas-card border border-canvas-border shadow-soft-sm text-center space-y-2">
+            <span className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-emerald-soft text-emerald-bank text-xs font-bold">
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>Step 3 of 3: Active Video Recording</span>
+            </span>
+            <h2 className="text-xl sm:text-2xl md:text-3xl font-black text-ink tracking-tight">
+              Please look naturally into the camera and blink normally
             </h2>
-            <p className="text-xs text-ink-muted max-w-md mx-auto leading-relaxed">
-              {applicantResult.message}
+            <p className="text-xs sm:text-sm text-ink-muted max-w-lg mx-auto">
+              Center your face inside the oval guide and sit naturally. The recording lasts 5 seconds and will automatically submit.
             </p>
           </div>
 
-          {/* Reference Meta */}
-          <div className="p-3 rounded-xl bg-canvas-subtle border border-canvas-border flex items-center justify-between text-xs text-ink-muted font-mono">
-            <span>Session ID:</span>
-            <span className="text-ink font-semibold">{applicantResult.session_id.slice(0, 13)}...</span>
+          {/* MAIN CAMERA / UPLOAD VIEWPORT */}
+          <div className="p-6 sm:p-8 rounded-3xl bg-canvas-card border border-canvas-border shadow-soft-md space-y-6">
+            
+            <div className="relative w-full aspect-video rounded-2xl bg-slate-950 border border-canvas-border overflow-hidden flex items-center justify-center shadow-inner">
+              
+              {mode === 'webcam' ? (
+                <>
+                  <video
+                    ref={videoRef}
+                    autoPlay
+                    playsInline
+                    muted
+                    className="w-full h-full object-cover transform -scale-x-100"
+                  />
+                  
+                  {/* Biometric Oval Guide Overlay */}
+                  <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+                    <div className={`w-52 h-68 rounded-[50%] border-2 transition-all duration-300 ${
+                      isRecording 
+                        ? 'border-emerald-400 shadow-[0_0_35px_rgba(16,185,129,0.55)] scale-105' 
+                        : 'border-white/50 border-dashed'
+                    }`} />
+                  </div>
+
+                  {/* 3-2-1 Countdown Overlay */}
+                  {countdown !== null && (
+                    <div className="absolute inset-0 bg-slate-950/75 backdrop-blur-sm flex flex-col items-center justify-center space-y-3">
+                      <span className="text-8xl font-black text-white animate-pulse">
+                        {countdown}
+                      </span>
+                      <span className="text-sm font-bold text-emerald-soft tracking-wider uppercase">
+                        Get Ready & Look Straight Ahead
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Recording In-Progress Banner */}
+                  {isRecording && (
+                    <div className="absolute top-4 inset-x-4 flex items-center justify-between pointer-events-none">
+                      <div className="flex items-center space-x-2 px-3.5 py-1.5 rounded-full bg-red-600/95 text-white text-xs font-bold shadow-lg animate-pulse">
+                        <span className="w-2.5 h-2.5 rounded-full bg-white" />
+                        <span>RECORDING: {recordSecondsLeft}s remaining</span>
+                      </div>
+
+                      <div className="px-3 py-1.5 rounded-full bg-slate-900/90 text-emerald-400 text-xs font-mono font-bold border border-slate-700">
+                        Auto-submits at 0s
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Camera Error Message */}
+                  {cameraError && (
+                    <div className="absolute inset-0 p-6 bg-slate-950/95 flex flex-col items-center justify-center text-center">
+                      <AlertCircle className="w-10 h-10 text-amber-bank mb-2" />
+                      <p className="text-xs text-slate-300 max-w-sm mb-4 leading-relaxed">{cameraError}</p>
+                      <button
+                        onClick={startCamera}
+                        className="px-4 py-2 rounded-xl bg-emerald-soft text-emerald-bank text-xs font-bold border border-emerald-border hover:bg-emerald-border transition-colors"
+                      >
+                        Retry Camera Permission
+                      </button>
+                    </div>
+                  )}
+                </>
+              ) : (
+                /* Upload Mode Canvas */
+                <div className="w-full h-full flex flex-col items-center justify-center p-6 text-center bg-canvas-card">
+                  {selectedFile ? (
+                    <div className="space-y-4">
+                      <FileVideo className="w-16 h-16 text-emerald-bank mx-auto animate-bounce" />
+                      <div>
+                        <p className="text-sm font-bold text-ink">{selectedFile.name}</p>
+                        <p className="text-xs text-ink-muted">
+                          {(selectedFile.size / (1024 * 1024)).toFixed(2)} MB • Ready for Screening
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => setSelectedFile(null)}
+                        className="text-xs text-wine-bank hover:underline font-semibold"
+                      >
+                        Choose another video file
+                      </button>
+                    </div>
+                  ) : (
+                    <label className="cursor-pointer group flex flex-col items-center space-y-3">
+                      <div className="w-16 h-16 rounded-full bg-emerald-soft flex items-center justify-center text-emerald-bank group-hover:scale-110 transition-transform">
+                        <Upload className="w-8 h-8" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold text-ink">Select Video Clip to Screen</p>
+                        <p className="text-xs text-ink-muted mt-0.5">MP4 or WebM video file (max 30MB)</p>
+                      </div>
+                      <input
+                        type="file"
+                        accept="video/mp4,video/webm"
+                        className="hidden"
+                        onChange={(e) => {
+                          if (e.target.files && e.target.files[0]) {
+                            setSelectedFile(e.target.files[0]);
+                          }
+                        }}
+                      />
+                    </label>
+                  )}
+                </div>
+              )}
+
+            </div>
+
+            {/* Bottom Actions */}
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pt-2">
+              <div className="text-xs text-ink-muted">
+                {mode === 'webcam' ? (
+                  <span>Recording will automatically submit upon 5-second completion</span>
+                ) : (
+                  <span>Select a prerecorded video clip for screening testing</span>
+                )}
+              </div>
+
+              <div>
+                {mode === 'webcam' && (
+                  <button
+                    onClick={handleStartRecording}
+                    disabled={isRecording || countdown !== null || !webcamStream || isSubmitting}
+                    className="w-full sm:w-auto px-8 py-3.5 rounded-xl bg-emerald-bank hover:bg-emerald-hover text-white text-xs font-bold shadow-soft-md transition-all flex items-center justify-center space-x-2 disabled:opacity-50"
+                  >
+                    <Video className="w-4 h-4 text-emerald-soft" />
+                    <span>{isRecording ? `Recording... (${recordSecondsLeft}s)` : 'Start 5-Second Recording'}</span>
+                  </button>
+                )}
+
+                {mode === 'upload' && selectedFile && (
+                  <button
+                    onClick={() => submitVerificationVideo()}
+                    disabled={isSubmitting}
+                    className="w-full sm:w-auto px-8 py-3.5 rounded-xl bg-emerald-bank hover:bg-emerald-hover text-white text-xs font-bold shadow-soft-md transition-all flex items-center justify-center space-x-2 disabled:opacity-50"
+                  >
+                    {isSubmitting ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin text-emerald-soft" />
+                        <span>Processing Video...</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>Submit for Verification</span>
+                        <ArrowRight className="w-4 h-4 text-emerald-soft" />
+                      </>
+                    )}
+                  </button>
+                )}
+              </div>
+            </div>
+
           </div>
 
-          {/* Security Assurance Notice */}
-          <p className="text-[11px] text-ink-faint">
-            Dual-Perspective Invariant: Internal fraud risk gauges and Grad-CAM saliency artifacts are withheld from applicant endpoints to prevent adversarial oracle probing.
-          </p>
+          {/* SLEEK, CLEAN PROGRESS BAR (NO TECHNICAL INTERNAL STEPS) */}
+          {isSubmitting && (
+            <div className="p-6 rounded-3xl bg-canvas-card border border-canvas-border shadow-soft-md space-y-3.5 text-center animate-in fade-in duration-300">
+              <div className="flex items-center justify-center space-x-2 text-xs font-bold text-ink">
+                <RefreshCw className="w-4 h-4 animate-spin text-emerald-bank" />
+                <span>Screening in progress... Please wait</span>
+              </div>
 
-          <button
-            onClick={handleReset}
-            className="w-full py-2.5 rounded-xl bg-canvas-subtle hover:bg-canvas-border text-ink text-xs font-semibold transition-colors flex items-center justify-center space-x-2"
-          >
-            <RefreshCw className="w-3.5 h-3.5" />
-            <span>Verify Another Applicant</span>
-          </button>
+              {/* Clean animated progress bar */}
+              <div className="w-full bg-canvas-subtle rounded-full h-2.5 overflow-hidden border border-canvas-border">
+                <div className="bg-emerald-bank h-full w-full animate-pulse rounded-full" />
+              </div>
+
+              <p className="text-[11px] text-ink-muted">
+                Verifying facial video stream and biometric liveness. This takes only a few seconds.
+              </p>
+            </div>
+          )}
+
+          {/* Submission Error Banner */}
+          {submissionError && (
+            <div className="p-4 rounded-2xl bg-wine-soft border border-wine-border text-wine-bank text-xs flex items-center space-x-2.5">
+              <AlertCircle className="w-5 h-5 flex-shrink-0" />
+              <span>{submissionError}</span>
+            </div>
+          )}
+
+        </div>
+      )}
+
+      {/* ============================================================== */}
+      {/* STEP 4: RESULT SCREEN (CLEAR BIG RED CROSS / AMBER / GREEN)    */}
+      {/* ============================================================== */}
+      {currentStep === 'RESULT' && applicantResult && (
+        <div className="max-w-xl mx-auto">
+          
+          {/* STATE A: REJECTED (BIG RED CROSS) */}
+          {(applicantResult.is_rejected || ['REJECTED', 'RETRY_REQUIRED', 'RETRY', 'FAILED'].includes(applicantResult.status)) && (
+            <div className="p-8 sm:p-10 rounded-3xl bg-canvas-card border-2 border-wine-border shadow-soft-lg text-center space-y-6 animate-in fade-in zoom-in-95 duration-300">
+              
+              {/* BIG RED CROSS ICON */}
+              <div className="w-24 h-24 rounded-full mx-auto bg-wine-soft border-4 border-wine-border flex items-center justify-center text-wine-bank shadow-[0_0_40px_rgba(225,29,72,0.25)]">
+                <XCircle className="w-16 h-16 stroke-[2.5]" />
+              </div>
+
+              <div className="space-y-2">
+                <h2 className="text-2xl sm:text-3xl font-black text-wine-bank tracking-tight">
+                  Verification Failed
+                </h2>
+                <p className="text-sm font-semibold text-ink leading-relaxed max-w-md mx-auto">
+                  {applicantResult.message || applicantResult.user_message || 'Physical presence could not be confirmed. A presentation attack or screen replay was detected.'}
+                </p>
+                <p className="text-xs text-ink-muted max-w-sm mx-auto pt-1">
+                  Please ensure you are physically present in front of the camera, do not hold phone screens or photographs, and sit in a well-lit area.
+                </p>
+              </div>
+
+              {/* Reference ID Pill */}
+              <div className="p-3.5 rounded-2xl bg-canvas-subtle border border-canvas-border flex items-center justify-between text-xs font-mono text-ink-muted">
+                <span>Application ID:</span>
+                <span className="font-bold text-ink">{applicationId}</span>
+              </div>
+
+              {/* Retry Call to Action */}
+              <div className="pt-2 space-y-3">
+                <button
+                  onClick={handleRetry}
+                  className="w-full py-3.5 px-6 rounded-2xl bg-wine-bank hover:bg-rose-700 text-white text-xs font-bold shadow-soft-md transition-all flex items-center justify-center space-x-2"
+                >
+                  <RefreshCw className="w-4 h-4 text-rose-200" />
+                  <span>Retry Verification</span>
+                </button>
+
+                <button
+                  onClick={handleStartFresh}
+                  className="w-full py-2.5 rounded-xl text-xs font-semibold text-ink-muted hover:text-ink transition-colors"
+                >
+                  Start New Application
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* STATE B: UNDER MANUAL SUPERVISION (AMBER SHIELD) */}
+          {(applicantResult.is_under_review || ['UNDER_REVIEW', 'GUARDED', 'ELEVATED'].includes(applicantResult.status)) && (
+            <div className="p-8 sm:p-10 rounded-3xl bg-canvas-card border-2 border-amber-border shadow-soft-lg text-center space-y-6 animate-in fade-in zoom-in-95 duration-300">
+              
+              <div className="w-24 h-24 rounded-full mx-auto bg-amber-soft border-4 border-amber-border flex items-center justify-center text-amber-bank shadow-[0_0_35px_rgba(217,119,6,0.2)]">
+                <Clock className="w-14 h-14 stroke-[2.2]" />
+              </div>
+
+              <div className="space-y-2">
+                <h2 className="text-2xl sm:text-3xl font-black text-ink tracking-tight">
+                  Application Under Manual Review
+                </h2>
+                <p className="text-sm font-semibold text-ink-muted leading-relaxed max-w-md mx-auto">
+                  {applicantResult.message || applicantResult.user_message || 'Your biometric session has been forwarded to a compliance officer for manual verification.'}
+                </p>
+                <p className="text-xs text-ink-muted max-w-sm mx-auto pt-1">
+                  Our verification officer is reviewing the forensic frames. You will receive an update shortly.
+                </p>
+              </div>
+
+              <div className="p-3.5 rounded-2xl bg-canvas-subtle border border-canvas-border flex items-center justify-between text-xs font-mono text-ink-muted">
+                <span>Application ID:</span>
+                <span className="font-bold text-ink">{applicationId}</span>
+              </div>
+
+              <div className="pt-2">
+                <button
+                  onClick={handleStartFresh}
+                  className="w-full py-3.5 px-6 rounded-2xl bg-canvas-subtle hover:bg-canvas-border text-ink text-xs font-bold transition-all flex items-center justify-center space-x-2"
+                >
+                  <RefreshCw className="w-4 h-4 text-emerald-bank" />
+                  <span>Screen Another Applicant</span>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* STATE C: APPROVED / SUCCESS (BIG GREEN CHECKMARK) */}
+          {(applicantResult.is_approved || ['APPROVED', 'COMPLETED', 'SUCCESS'].includes(applicantResult.status)) && (
+            <div className="p-8 sm:p-10 rounded-3xl bg-canvas-card border-2 border-emerald-border shadow-soft-lg text-center space-y-6 animate-in fade-in zoom-in-95 duration-300">
+              
+              <div className="w-24 h-24 rounded-full mx-auto bg-emerald-soft border-4 border-emerald-border flex items-center justify-center text-emerald-bank shadow-[0_0_40px_rgba(16,185,129,0.3)]">
+                <CheckCircle2 className="w-16 h-16 stroke-[2.5]" />
+              </div>
+
+              <div className="space-y-2">
+                <h2 className="text-2xl sm:text-3xl font-black text-emerald-bank tracking-tight">
+                  Verification Successful
+                </h2>
+                <p className="text-sm font-semibold text-ink leading-relaxed max-w-md mx-auto">
+                  {applicantResult.message || applicantResult.user_message || 'Your identity and biological liveness have been verified. Your KYC application has been approved.'}
+                </p>
+                <p className="text-xs text-ink-muted max-w-sm mx-auto pt-1">
+                  Biometric liveness confirmed. Your banking profile has been updated.
+                </p>
+              </div>
+
+              <div className="p-3.5 rounded-2xl bg-canvas-subtle border border-canvas-border flex items-center justify-between text-xs font-mono text-ink-muted">
+                <span>Application Ref:</span>
+                <span className="font-bold text-emerald-bank">{applicationId}</span>
+              </div>
+
+              <div className="pt-2">
+                <button
+                  onClick={handleStartFresh}
+                  className="w-full py-3.5 px-6 rounded-2xl bg-emerald-bank hover:bg-emerald-hover text-white text-xs font-bold shadow-soft-md transition-all flex items-center justify-center space-x-2"
+                >
+                  <RefreshCw className="w-4 h-4 text-emerald-soft" />
+                  <span>Verify Another Customer</span>
+                </button>
+              </div>
+            </div>
+          )}
+
         </div>
       )}
 
