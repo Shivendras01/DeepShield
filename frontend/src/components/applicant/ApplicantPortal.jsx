@@ -27,8 +27,10 @@ import {
   Square
 } from 'lucide-react';
 import { api } from '../../services/api';
+import { useLanguage } from '../../context/LanguageContext';
 
 export default function ApplicantPortal({ onScreeningComplete }) {
+  const { t, lang } = useLanguage();
   // Navigation Flow: 'DETAILS' | 'INSTRUCTIONS' | 'RECORDING' | 'RESULT'
   const [currentStep, setCurrentStep] = useState('DETAILS');
 
@@ -276,14 +278,14 @@ export default function ApplicantPortal({ onScreeningComplete }) {
       <div className="mb-6">
         <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-emerald-soft border border-emerald-border text-emerald-bank text-xs font-semibold mb-2">
           <ShieldCheck className="w-3.5 h-3.5" />
-          <span>DeepShield Video e-KYC Verification</span>
+          <span>{t('brand_name')} Video e-KYC Verification</span>
         </div>
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
           <h1 className="text-2xl sm:text-3xl font-extrabold text-ink tracking-tight">
-            Digital Identity Screening
+            {t('brand_subtitle')}
           </h1>
           <div className="flex items-center space-x-2 text-xs font-mono bg-canvas-card px-3 py-1.5 rounded-xl border border-canvas-border shadow-soft-sm text-ink-muted">
-            <span className="text-[10px] uppercase font-bold text-ink-faint">Application Ref:</span>
+            <span className="text-[10px] uppercase font-bold text-ink-faint">{t('app_id_label')}</span>
             <span className="font-bold text-emerald-bank">{applicationId}</span>
           </div>
         </div>
@@ -297,14 +299,14 @@ export default function ApplicantPortal({ onScreeningComplete }) {
           <div className="p-6 sm:p-8 rounded-3xl bg-canvas-card border border-canvas-border shadow-soft-md space-y-6">
             <div className="border-b border-canvas-border pb-4">
               <span className="text-[11px] font-bold text-emerald-bank uppercase tracking-wider block mb-1">
-                Step 1 of 3: Applicant Details
+                {t('step1_tag')}
               </span>
               <h2 className="text-lg font-bold text-ink flex items-center space-x-2">
                 <User className="w-5 h-5 text-emerald-bank" />
-                <span>Identity Verification Form</span>
+                <span>{t('step1_title')}</span>
               </h2>
               <p className="text-xs text-ink-muted mt-1">
-                Enter your official identity details as they appear on your government document. A unique reference code has been assigned to your verification session.
+                {t('step1_desc')}
               </p>
             </div>
 
@@ -312,7 +314,7 @@ export default function ApplicantPortal({ onScreeningComplete }) {
               {/* Full Legal Name */}
               <div>
                 <label className="block text-xs font-semibold text-ink-muted mb-1.5">
-                  Full Legal Name (as per Govt ID)
+                  {t('full_name_label')}
                 </label>
                 <div className="relative">
                   <input
@@ -320,7 +322,7 @@ export default function ApplicantPortal({ onScreeningComplete }) {
                     value={applicantName}
                     onChange={(e) => setApplicantName(e.target.value)}
                     required
-                    placeholder="e.g. Shivendra Singh"
+                    placeholder={t('full_name_placeholder')}
                     className="w-full px-3.5 py-2.5 rounded-xl bg-canvas-subtle border border-canvas-border text-sm text-ink font-medium focus:outline-none focus:border-emerald-bank transition-colors"
                   />
                 </div>
@@ -330,23 +332,23 @@ export default function ApplicantPortal({ onScreeningComplete }) {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-ink-muted mb-1.5">
-                    Government ID Document
+                    {t('id_type_label')}
                   </label>
                   <select
                     value={idType}
                     onChange={(e) => setIdType(e.target.value)}
                     className="w-full px-3.5 py-2.5 rounded-xl bg-canvas-subtle border border-canvas-border text-xs text-ink font-medium focus:outline-none focus:border-emerald-bank transition-colors"
                   >
-                    <option value="Aadhaar Card">Aadhaar Card (UIDAI)</option>
-                    <option value="PAN Card">PAN Card (Income Tax)</option>
-                    <option value="Passport">Passport</option>
-                    <option value="Voter ID">Voter ID (Election Commission)</option>
+                    <option value="Aadhaar Card">{t('id_type_aadhaar')}</option>
+                    <option value="PAN Card">{t('id_type_pan')}</option>
+                    <option value="Passport">{t('id_type_passport')}</option>
+                    <option value="Voter ID">{t('id_type_voter')}</option>
                   </select>
                 </div>
 
                 <div>
                   <label className="block text-xs font-semibold text-ink-muted mb-1.5">
-                    Document Number
+                    {t('id_number_label')}
                   </label>
                   <div className="relative">
                     <input
@@ -354,7 +356,7 @@ export default function ApplicantPortal({ onScreeningComplete }) {
                       value={idNumber}
                       onChange={(e) => setIdNumber(e.target.value)}
                       required
-                      placeholder="e.g. 4829-8472-9041"
+                      placeholder={t('id_number_placeholder')}
                       className="w-full px-3.5 py-2.5 rounded-xl bg-canvas-subtle border border-canvas-border text-xs font-mono text-ink focus:outline-none focus:border-emerald-bank transition-colors"
                     />
                   </div>
@@ -364,7 +366,7 @@ export default function ApplicantPortal({ onScreeningComplete }) {
               {/* Mobile Number / Contact */}
               <div>
                 <label className="block text-xs font-semibold text-ink-muted mb-1.5">
-                  Registered Mobile Number
+                  {t('mobile_label')}
                 </label>
                 <div className="relative">
                   <input
@@ -372,7 +374,7 @@ export default function ApplicantPortal({ onScreeningComplete }) {
                     value={mobileNumber}
                     onChange={(e) => setMobileNumber(e.target.value)}
                     required
-                    placeholder="+91 98765 43210"
+                    placeholder={t('mobile_placeholder')}
                     className="w-full px-3.5 py-2.5 rounded-xl bg-canvas-subtle border border-canvas-border text-xs font-mono text-ink focus:outline-none focus:border-emerald-bank transition-colors"
                   />
                 </div>
@@ -388,7 +390,9 @@ export default function ApplicantPortal({ onScreeningComplete }) {
                     className="mt-1 w-4 h-4 rounded text-emerald-bank border-canvas-border focus:ring-emerald-bank"
                   />
                   <span className="text-xs text-ink-muted leading-relaxed">
-                    I consent to video biometric liveness screening and facial presentation attack analysis under ISO/IEC 30107 standards for banking identity verification.
+                    {lang === 'hi'
+                      ? 'मैं बैंकिंग पहचान सत्यापन के लिए ISO/IEC 30107 मानकों के तहत वीडियो बायोमेट्रिक जीवंतता जांच और चेहरे के विश्लेषण के लिए सहमति देता हूँ।'
+                      : 'I consent to video biometric liveness screening and facial presentation attack analysis under ISO/IEC 30107 standards for banking identity verification.'}
                   </span>
                 </label>
               </div>
@@ -406,7 +410,7 @@ export default function ApplicantPortal({ onScreeningComplete }) {
                 disabled={!applicantName.trim() || !consentGiven}
                 className="px-6 py-3 rounded-xl bg-emerald-bank hover:bg-emerald-hover text-white text-xs font-bold shadow-soft-md transition-all flex items-center space-x-2 disabled:opacity-50"
               >
-                <span>Proceed to Instructions</span>
+                <span>{t('proceed_to_instructions')}</span>
                 <ChevronRight className="w-4 h-4 text-emerald-soft" />
               </button>
             </div>
@@ -425,13 +429,13 @@ export default function ApplicantPortal({ onScreeningComplete }) {
             <div className="border-b border-canvas-border pb-4 flex items-center justify-between">
               <div>
                 <span className="text-[11px] font-bold text-emerald-bank uppercase tracking-wider block mb-1">
-                  Step 2 of 3: Biometric Instructions & Preparation
+                  {t('step2_tag')}
                 </span>
                 <h2 className="text-xl sm:text-2xl font-black text-ink tracking-tight">
-                  Important Guidelines Before Recording
+                  {t('step2_title')}
                 </h2>
                 <p className="text-xs sm:text-sm text-ink-muted mt-1 max-w-xl">
-                  Please read the 4 guidelines below to ensure your 5-second video verification passes without issues.
+                  {t('step2_desc')}
                 </p>
               </div>
               
@@ -440,7 +444,7 @@ export default function ApplicantPortal({ onScreeningComplete }) {
                 className="text-xs font-semibold text-ink-muted hover:text-ink transition-colors flex items-center space-x-1"
               >
                 <ArrowLeft className="w-3.5 h-3.5" />
-                <span>Back</span>
+                <span>{t('back_to_details')}</span>
               </button>
             </div>
 
@@ -453,10 +457,10 @@ export default function ApplicantPortal({ onScreeningComplete }) {
                   <Sun className="w-5 h-5" />
                 </div>
                 <h3 className="text-sm font-bold text-ink">
-                  1. Clean & Even Lighting
+                  {t('guide1_title')}
                 </h3>
                 <p className="text-xs text-ink-muted leading-relaxed">
-                  Sit facing natural daylight or good indoor light. Avoid strong backlights, harsh shadows, or dark rooms that obscure your facial contours.
+                  {t('guide1_desc')}
                 </p>
               </div>
 
@@ -466,10 +470,10 @@ export default function ApplicantPortal({ onScreeningComplete }) {
                   <Eye className="w-5 h-5" />
                 </div>
                 <h3 className="text-sm font-bold text-ink">
-                  2. Look Directly & Blink Normally
+                  {t('guide2_title')}
                 </h3>
                 <p className="text-xs text-ink-muted leading-relaxed">
-                  Look directly at the webcam lens. Blink naturally 1-2 times during the 5 seconds. Do not hold your breath or freeze your eyes unnaturally.
+                  {t('guide2_desc')}
                 </p>
               </div>
 
@@ -479,10 +483,10 @@ export default function ApplicantPortal({ onScreeningComplete }) {
                   <Ban className="w-5 h-5" />
                 </div>
                 <h3 className="text-sm font-bold text-ink">
-                  3. No Sunglasses, Masks, or Screens
+                  {t('guide3_title')}
                 </h3>
                 <p className="text-xs text-ink-muted leading-relaxed">
-                  Remove sunglasses, tinted spectacles, or face masks. Holding an external phone, tablet, or photo in front of the lens will cause immediate rejection.
+                  {t('guide3_desc')}
                 </p>
               </div>
 
@@ -492,10 +496,10 @@ export default function ApplicantPortal({ onScreeningComplete }) {
                   <Clock className="w-5 h-5" />
                 </div>
                 <h3 className="text-sm font-bold text-ink">
-                  4. Automated 5-Second Session
+                  {t('guide4_title')}
                 </h3>
                 <p className="text-xs text-ink-muted leading-relaxed">
-                  No awkward head turns or speech prompts. The session records for 5 seconds and automatically submits without requiring extra clicks.
+                  {t('guide4_desc')}
                 </p>
               </div>
 
@@ -516,10 +520,10 @@ export default function ApplicantPortal({ onScreeningComplete }) {
                 />
                 <div className="space-y-0.5">
                   <span className="text-xs sm:text-sm font-bold text-ink block">
-                    I have read and understood all the verification instructions
+                    {t('ack_checkbox_title')}
                   </span>
                   <span className="text-[11px] text-ink-muted block leading-relaxed">
-                    I confirm that I am sitting in good lighting, directly facing the camera, and ready to record my 5-second video.
+                    {t('ack_checkbox_desc')}
                   </span>
                 </div>
               </label>
@@ -532,7 +536,7 @@ export default function ApplicantPortal({ onScreeningComplete }) {
                 className="px-4 py-2.5 rounded-xl text-xs font-semibold text-ink-muted hover:text-ink transition-colors flex items-center space-x-1.5"
               >
                 <ArrowLeft className="w-3.5 h-3.5" />
-                <span>Back to Details</span>
+                <span>{t('back_to_details')}</span>
               </button>
 
               <button
@@ -540,7 +544,7 @@ export default function ApplicantPortal({ onScreeningComplete }) {
                 disabled={!instructionsAcknowledged}
                 className="px-6 py-3 rounded-xl bg-emerald-bank hover:bg-emerald-hover text-white text-xs font-bold shadow-soft-md transition-all flex items-center space-x-2 disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                <span>Proceed to Video Recording</span>
+                <span>{t('start_verification')}</span>
                 <ChevronRight className="w-4 h-4 text-emerald-soft" />
               </button>
             </div>
@@ -563,7 +567,7 @@ export default function ApplicantPortal({ onScreeningComplete }) {
               className="text-xs font-semibold text-ink-muted hover:text-ink transition-colors flex items-center space-x-1 disabled:opacity-50"
             >
               <ArrowLeft className="w-3.5 h-3.5" />
-              <span>Back to Instructions</span>
+              <span>{t('review_instructions')}</span>
             </button>
 
             {/* Input Mode Pills */}
@@ -578,7 +582,7 @@ export default function ApplicantPortal({ onScreeningComplete }) {
                 }`}
               >
                 <Camera className="w-3.5 h-3.5" />
-                <span>Live Camera</span>
+                <span>{t('live_camera')}</span>
               </button>
 
               <button
@@ -591,7 +595,7 @@ export default function ApplicantPortal({ onScreeningComplete }) {
                 }`}
               >
                 <Upload className="w-3.5 h-3.5" />
-                <span>Upload Test Video</span>
+                <span>{t('upload_clip')}</span>
               </button>
             </div>
           </div>
@@ -600,13 +604,13 @@ export default function ApplicantPortal({ onScreeningComplete }) {
           <div className="p-6 sm:p-7 rounded-3xl bg-canvas-card border border-canvas-border shadow-soft-sm text-center space-y-2">
             <span className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-emerald-soft text-emerald-bank text-xs font-bold">
               <Sparkles className="w-3.5 h-3.5" />
-              <span>Step 3 of 3: Active Video Recording</span>
+              <span>{t('step3_tag')}</span>
             </span>
             <h2 className="text-xl sm:text-2xl md:text-3xl font-black text-ink tracking-tight">
-              Please look naturally into the camera and blink normally
+              {t('step3_prompt')}
             </h2>
             <p className="text-xs sm:text-sm text-ink-muted max-w-lg mx-auto">
-              Center your face inside the oval guide and sit naturally. The recording lasts 5 seconds and will automatically submit.
+              {t('step3_subprompt')}
             </p>
           </div>
 
@@ -641,7 +645,7 @@ export default function ApplicantPortal({ onScreeningComplete }) {
                         {countdown}
                       </span>
                       <span className="text-sm font-bold text-emerald-soft tracking-wider uppercase">
-                        Get Ready & Look Straight Ahead
+                        {t('camera_instruction')}
                       </span>
                     </div>
                   )}
@@ -651,11 +655,11 @@ export default function ApplicantPortal({ onScreeningComplete }) {
                     <div className="absolute top-4 inset-x-4 flex items-center justify-between pointer-events-none">
                       <div className="flex items-center space-x-2 px-3.5 py-1.5 rounded-full bg-red-600/95 text-white text-xs font-bold shadow-lg animate-pulse">
                         <span className="w-2.5 h-2.5 rounded-full bg-white" />
-                        <span>RECORDING: {recordSecondsLeft}s remaining</span>
+                        <span>{t('recording_in_progress', { seconds: recordSecondsLeft })}</span>
                       </div>
 
                       <div className="px-3 py-1.5 rounded-full bg-slate-900/90 text-emerald-400 text-xs font-mono font-bold border border-slate-700">
-                        Auto-submits at 0s
+                        {t('session_auto_submits')}
                       </div>
                     </div>
                   )}
@@ -683,14 +687,14 @@ export default function ApplicantPortal({ onScreeningComplete }) {
                       <div>
                         <p className="text-sm font-bold text-ink">{selectedFile.name}</p>
                         <p className="text-xs text-ink-muted">
-                          {(selectedFile.size / (1024 * 1024)).toFixed(2)} MB • Ready for Screening
+                          {(selectedFile.size / (1024 * 1024)).toFixed(2)} MB • {t('selected_file_ready')}
                         </p>
                       </div>
                       <button
                         onClick={() => setSelectedFile(null)}
                         className="text-xs text-wine-bank hover:underline font-semibold"
                       >
-                        Choose another video file
+                        {lang === 'hi' ? 'अन्य वीडियो चुनें' : 'Choose another video file'}
                       </button>
                     </div>
                   ) : (
@@ -699,8 +703,8 @@ export default function ApplicantPortal({ onScreeningComplete }) {
                         <Upload className="w-8 h-8" />
                       </div>
                       <div>
-                        <p className="text-sm font-bold text-ink">Select Video Clip to Screen</p>
-                        <p className="text-xs text-ink-muted mt-0.5">MP4 or WebM video file (max 30MB)</p>
+                        <p className="text-sm font-bold text-ink">{t('upload_drop_label')}</p>
+                        <p className="text-xs text-ink-muted mt-0.5">{t('upload_sublabel')}</p>
                       </div>
                       <input
                         type="file"
@@ -723,9 +727,9 @@ export default function ApplicantPortal({ onScreeningComplete }) {
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pt-2">
               <div className="text-xs text-ink-muted">
                 {mode === 'webcam' ? (
-                  <span>Recording will automatically submit upon 5-second completion</span>
+                  <span>{t('session_auto_submits')}</span>
                 ) : (
-                  <span>Select a prerecorded video clip for screening testing</span>
+                  <span>{t('selected_file_ready')}</span>
                 )}
               </div>
 
@@ -737,7 +741,7 @@ export default function ApplicantPortal({ onScreeningComplete }) {
                     className="w-full sm:w-auto px-8 py-3.5 rounded-xl bg-emerald-bank hover:bg-emerald-hover text-white text-xs font-bold shadow-soft-md transition-all flex items-center justify-center space-x-2 disabled:opacity-50"
                   >
                     <Video className="w-4 h-4 text-emerald-soft" />
-                    <span>{isRecording ? `Recording... (${recordSecondsLeft}s)` : 'Start 5-Second Recording'}</span>
+                    <span>{isRecording ? t('recording_in_progress', { seconds: recordSecondsLeft }) : t('start_recording_btn')}</span>
                   </button>
                 )}
 
@@ -750,11 +754,11 @@ export default function ApplicantPortal({ onScreeningComplete }) {
                     {isSubmitting ? (
                       <>
                         <RefreshCw className="w-4 h-4 animate-spin text-emerald-soft" />
-                        <span>Processing Video...</span>
+                        <span>{t('screening_progress')}</span>
                       </>
                     ) : (
                       <>
-                        <span>Submit for Verification</span>
+                        <span>{t('submit_uploaded_btn')}</span>
                         <ArrowRight className="w-4 h-4 text-emerald-soft" />
                       </>
                     )}
@@ -765,12 +769,12 @@ export default function ApplicantPortal({ onScreeningComplete }) {
 
           </div>
 
-          {/* SLEEK, CLEAN PROGRESS BAR (NO TECHNICAL INTERNAL STEPS) */}
+          {/* SLEEK, CLEAN PROGRESS BAR */}
           {isSubmitting && (
             <div className="p-6 rounded-3xl bg-canvas-card border border-canvas-border shadow-soft-md space-y-3.5 text-center animate-in fade-in duration-300">
               <div className="flex items-center justify-center space-x-2 text-xs font-bold text-ink">
                 <RefreshCw className="w-4 h-4 animate-spin text-emerald-bank" />
-                <span>Screening in progress... Please wait</span>
+                <span>{t('screening_progress')}</span>
               </div>
 
               {/* Clean animated progress bar */}
@@ -779,7 +783,9 @@ export default function ApplicantPortal({ onScreeningComplete }) {
               </div>
 
               <p className="text-[11px] text-ink-muted">
-                Verifying facial video stream and biometric liveness. This takes only a few seconds.
+                {lang === 'hi' 
+                  ? 'चेहरे की वीडियो स्ट्रीम और बायोमेट्रिक जीवंतता का सत्यापन किया जा रहा है...'
+                  : 'Verifying facial video stream and biometric liveness. This takes only a few seconds.'}
               </p>
             </div>
           )}
@@ -812,19 +818,19 @@ export default function ApplicantPortal({ onScreeningComplete }) {
 
               <div className="space-y-2">
                 <h2 className="text-2xl sm:text-3xl font-black text-wine-bank tracking-tight">
-                  Verification Failed
+                  {t('res_rejected_title')}
                 </h2>
                 <p className="text-sm font-semibold text-ink leading-relaxed max-w-md mx-auto">
-                  {applicantResult.message || applicantResult.user_message || 'Physical presence could not be confirmed. A presentation attack or screen replay was detected.'}
+                  {applicantResult.message || applicantResult.user_message || t('res_rejected_default_msg')}
                 </p>
                 <p className="text-xs text-ink-muted max-w-sm mx-auto pt-1">
-                  Please ensure you are physically present in front of the camera, do not hold phone screens or photographs, and sit in a well-lit area.
+                  {t('res_rejected_submsg')}
                 </p>
               </div>
 
               {/* Reference ID Pill */}
               <div className="p-3.5 rounded-2xl bg-canvas-subtle border border-canvas-border flex items-center justify-between text-xs font-mono text-ink-muted">
-                <span>Application ID:</span>
+                <span>{t('app_id_label')}</span>
                 <span className="font-bold text-ink">{applicationId}</span>
               </div>
 
@@ -835,14 +841,14 @@ export default function ApplicantPortal({ onScreeningComplete }) {
                   className="w-full py-3.5 px-6 rounded-2xl bg-wine-bank hover:bg-rose-700 text-white text-xs font-bold shadow-soft-md transition-all flex items-center justify-center space-x-2"
                 >
                   <RefreshCw className="w-4 h-4 text-rose-200" />
-                  <span>Retry Verification</span>
+                  <span>{t('retry_verification')}</span>
                 </button>
 
                 <button
                   onClick={handleStartFresh}
                   className="w-full py-2.5 rounded-xl text-xs font-semibold text-ink-muted hover:text-ink transition-colors"
                 >
-                  Start New Application
+                  {t('start_new_app')}
                 </button>
               </div>
             </div>
@@ -858,18 +864,18 @@ export default function ApplicantPortal({ onScreeningComplete }) {
 
               <div className="space-y-2">
                 <h2 className="text-2xl sm:text-3xl font-black text-ink tracking-tight">
-                  Application Under Manual Review
+                  {t('res_review_title')}
                 </h2>
                 <p className="text-sm font-semibold text-ink-muted leading-relaxed max-w-md mx-auto">
-                  {applicantResult.message || applicantResult.user_message || 'Your biometric session has been forwarded to a compliance officer for manual verification.'}
+                  {applicantResult.message || applicantResult.user_message || t('res_review_default_msg')}
                 </p>
                 <p className="text-xs text-ink-muted max-w-sm mx-auto pt-1">
-                  Our verification officer is reviewing the forensic frames. You will receive an update shortly.
+                  {t('res_review_submsg')}
                 </p>
               </div>
 
               <div className="p-3.5 rounded-2xl bg-canvas-subtle border border-canvas-border flex items-center justify-between text-xs font-mono text-ink-muted">
-                <span>Application ID:</span>
+                <span>{t('app_id_label')}</span>
                 <span className="font-bold text-ink">{applicationId}</span>
               </div>
 
@@ -879,7 +885,7 @@ export default function ApplicantPortal({ onScreeningComplete }) {
                   className="w-full py-3.5 px-6 rounded-2xl bg-canvas-subtle hover:bg-canvas-border text-ink text-xs font-bold transition-all flex items-center justify-center space-x-2"
                 >
                   <RefreshCw className="w-4 h-4 text-emerald-bank" />
-                  <span>Screen Another Applicant</span>
+                  <span>{t('screen_another_btn')}</span>
                 </button>
               </div>
             </div>
@@ -895,18 +901,18 @@ export default function ApplicantPortal({ onScreeningComplete }) {
 
               <div className="space-y-2">
                 <h2 className="text-2xl sm:text-3xl font-black text-emerald-bank tracking-tight">
-                  Verification Successful
+                  {t('res_success_title')}
                 </h2>
                 <p className="text-sm font-semibold text-ink leading-relaxed max-w-md mx-auto">
-                  {applicantResult.message || applicantResult.user_message || 'Your identity and biological liveness have been verified. Your KYC application has been approved.'}
+                  {applicantResult.message || applicantResult.user_message || t('res_success_default_msg')}
                 </p>
                 <p className="text-xs text-ink-muted max-w-sm mx-auto pt-1">
-                  Biometric liveness confirmed. Your banking profile has been updated.
+                  {t('res_success_submsg')}
                 </p>
               </div>
 
               <div className="p-3.5 rounded-2xl bg-canvas-subtle border border-canvas-border flex items-center justify-between text-xs font-mono text-ink-muted">
-                <span>Application Ref:</span>
+                <span>{t('app_id_label')}</span>
                 <span className="font-bold text-emerald-bank">{applicationId}</span>
               </div>
 
@@ -916,7 +922,7 @@ export default function ApplicantPortal({ onScreeningComplete }) {
                   className="w-full py-3.5 px-6 rounded-2xl bg-emerald-bank hover:bg-emerald-hover text-white text-xs font-bold shadow-soft-md transition-all flex items-center justify-center space-x-2"
                 >
                   <RefreshCw className="w-4 h-4 text-emerald-soft" />
-                  <span>Verify Another Customer</span>
+                  <span>{t('verify_another_btn')}</span>
                 </button>
               </div>
             </div>

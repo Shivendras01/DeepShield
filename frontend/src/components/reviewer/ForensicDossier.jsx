@@ -23,8 +23,10 @@ import {
 } from 'lucide-react';
 import RiskGauge from './RiskGauge';
 import { resolveMediaUrl, api } from '../../services/api';
+import { useLanguage } from '../../context/LanguageContext';
 
 export default function ForensicDossier({ session, onBack, onReviewSubmitted }) {
+  const { t, lang } = useLanguage();
   const [officerNotes, setOfficerNotes] = useState('');
   const [submittingAction, setSubmittingAction] = useState(null); // 'APPROVE' | 'REJECT' | null
   const [actionSuccess, setActionSuccess] = useState(null);
@@ -267,13 +269,13 @@ export default function ForensicDossier({ session, onBack, onReviewSubmitted }) 
 
               <div>
                 <label className="block text-xs font-semibold text-ink-muted mb-1.5">
-                  Officer Findings & Audit Notes
+                  {t('officer_notes_label')}
                 </label>
                 <textarea
                   rows={3}
                   value={officerNotes}
                   onChange={(e) => setOfficerNotes(e.target.value)}
-                  placeholder="Document verification findings, observed artifacts, or applicant explanation..."
+                  placeholder={t('officer_notes_placeholder')}
                   className="w-full p-3 rounded-xl bg-canvas-subtle border border-canvas-border text-xs text-ink focus:outline-none focus:border-emerald-bank transition-colors resize-none"
                 />
               </div>
@@ -297,7 +299,7 @@ export default function ForensicDossier({ session, onBack, onReviewSubmitted }) 
                   className="py-2.5 px-4 rounded-xl bg-wine-soft hover:bg-wine-border text-wine-bank text-xs font-bold border border-wine-border transition-all flex items-center justify-center space-x-1.5 disabled:opacity-50"
                 >
                   <X className="w-4 h-4" />
-                  <span>{submittingAction === 'REJECT' ? 'Recording...' : 'Reject Session'}</span>
+                  <span>{submittingAction === 'REJECT' ? 'Recording...' : t('btn_reject')}</span>
                 </button>
 
                 <button
@@ -306,7 +308,7 @@ export default function ForensicDossier({ session, onBack, onReviewSubmitted }) 
                   className="py-2.5 px-4 rounded-xl bg-emerald-bank hover:bg-emerald-hover text-white text-xs font-bold shadow-soft-sm transition-all flex items-center justify-center space-x-1.5 disabled:opacity-50"
                 >
                   <Check className="w-4 h-4 text-emerald-soft" />
-                  <span>{submittingAction === 'APPROVE' ? 'Recording...' : 'Approve KYC'}</span>
+                  <span>{submittingAction === 'APPROVE' ? 'Recording...' : t('btn_approve')}</span>
                 </button>
               </div>
             </div>
@@ -320,7 +322,7 @@ export default function ForensicDossier({ session, onBack, onReviewSubmitted }) 
           {/* 3 Channels Diagnostic Matrix */}
           <div className="p-6 rounded-2xl bg-canvas-card border border-canvas-border shadow-soft-sm space-y-4">
             <h3 className="text-xs font-bold text-ink-muted uppercase tracking-wider">
-              Channel Multi-Signal Diagnostics
+              {t('channel_diagnostics')}
             </h3>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -331,7 +333,7 @@ export default function ForensicDossier({ session, onBack, onReviewSubmitted }) 
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-[11px] font-bold text-ink flex items-center space-x-1">
                       <Cpu className="w-3.5 h-3.5 text-emerald-bank" />
-                      <span>1. Spatial CNN</span>
+                      <span>{t('chan_spatial_title')}</span>
                     </span>
                     <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
                       spatialChan.normalised_score > 50 ? 'bg-wine-soft text-wine-bank' : 'bg-emerald-soft text-emerald-bank'
@@ -358,7 +360,7 @@ export default function ForensicDossier({ session, onBack, onReviewSubmitted }) 
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-[11px] font-bold text-ink flex items-center space-x-1">
                       <Eye className="w-3.5 h-3.5 text-emerald-bank" />
-                      <span>2. Liveness EAR</span>
+                      <span>{t('chan_liveness_title')}</span>
                     </span>
                     <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
                       livenessChan.normalised_score > 50 ? 'bg-wine-soft text-wine-bank' : 'bg-emerald-soft text-emerald-bank'
@@ -389,7 +391,7 @@ export default function ForensicDossier({ session, onBack, onReviewSubmitted }) 
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-[11px] font-bold text-ink flex items-center space-x-1">
                       <Activity className="w-3.5 h-3.5 text-emerald-bank" />
-                      <span>3. Telemetry</span>
+                      <span>{t('chan_telemetry_title')}</span>
                     </span>
                     <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
                       telemetryChan.normalised_score > 50 ? 'bg-wine-soft text-wine-bank' : 'bg-emerald-soft text-emerald-bank'
@@ -422,7 +424,7 @@ export default function ForensicDossier({ session, onBack, onReviewSubmitted }) 
             <div className="flex items-center justify-between">
               <h3 className="text-xs font-bold text-ink-muted uppercase tracking-wider flex items-center space-x-1.5">
                 <Layers className="w-4 h-4 text-emerald-bank" />
-                <span>Forensic Explainability Artifacts</span>
+                <span>{t('forensic_artifacts_title')}</span>
               </h3>
               <span className="text-[10px] font-mono text-ink-faint flex items-center space-x-1">
                 <Lock className="w-3 h-3 text-emerald-bank" />
@@ -615,7 +617,7 @@ export default function ForensicDossier({ session, onBack, onReviewSubmitted }) 
           <div className="p-6 rounded-2xl bg-canvas-card border border-canvas-border shadow-soft-sm space-y-3">
             <h3 className="text-xs font-bold text-ink-muted uppercase tracking-wider flex items-center space-x-1.5">
               <History className="w-4 h-4 text-emerald-bank" />
-              <span>Immutable Audit Trail</span>
+              <span>{t('immutable_audit_title')}</span>
             </h3>
 
             <div className="space-y-2 max-h-48 overflow-y-auto pr-1">

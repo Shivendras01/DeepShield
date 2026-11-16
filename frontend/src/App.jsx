@@ -3,11 +3,13 @@ import Navbar from './components/Navbar';
 import ApplicantPage from './pages/ApplicantPage';
 import OfficerPage from './pages/OfficerPage';
 import { api } from './services/api';
+import { useLanguage } from './context/LanguageContext';
 
 export default function App() {
   const [activePortal, setActivePortal] = useState('applicant'); // 'applicant' | 'officer'
   const [backendStatus, setBackendStatus] = useState(null);
   const [lastScreenedSessionId, setLastScreenedSessionId] = useState(null);
+  const { t } = useLanguage();
 
   // Check health on mount and periodically
   useEffect(() => {
@@ -51,16 +53,16 @@ export default function App() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-2">
           <div className="flex items-center space-x-2">
             <span className="font-bold text-ink">DeepShield</span>
-            <span>• B.Tech Minor Research Project</span>
-            <span className="hidden md:inline">• ITM University Gwalior</span>
+            <span>• {t('footer_project')}</span>
+            <span className="hidden md:inline">• {t('footer_inst')}</span>
           </div>
 
           <div className="text-[11px] text-ink-faint flex items-center space-x-4">
-            <span>Spatial CNN (EfficientNet-B0)</span>
+            <span>{t('footer_spatial')}</span>
             <span>•</span>
-            <span>Passive Liveness (MediaPipe 468)</span>
+            <span>{t('footer_liveness')}</span>
             <span>•</span>
-            <span>Video Telemetry</span>
+            <span>{t('footer_telemetry')}</span>
           </div>
         </div>
       </footer>

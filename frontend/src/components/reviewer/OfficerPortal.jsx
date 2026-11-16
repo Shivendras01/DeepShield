@@ -13,8 +13,10 @@ import {
 } from 'lucide-react';
 import ForensicDossier from './ForensicDossier';
 import { api } from '../../services/api';
+import { useLanguage } from '../../context/LanguageContext';
 
 export default function OfficerPortal({ initialSessionId }) {
+  const { t, lang } = useLanguage();
   const [sessions, setSessions] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [filter, setFilter] = useState('ALL'); // 'ALL' | 'REQUIRES_REVIEW' | 'HIGH_RISK' | 'APPROVED'
@@ -123,7 +125,7 @@ export default function OfficerPortal({ initialSessionId }) {
                   : 'bg-canvas-card text-ink-muted hover:text-ink border border-canvas-border'
               }`}
             >
-              All Records ({sessions.length})
+              {t('tab_all')} ({sessions.length})
             </button>
 
             <button
@@ -134,7 +136,7 @@ export default function OfficerPortal({ initialSessionId }) {
                   : 'bg-canvas-card text-ink-muted hover:text-ink border border-canvas-border'
               }`}
             >
-              Pending Review (25–60)
+              {t('tab_pending')}
             </button>
 
             <button
@@ -145,7 +147,7 @@ export default function OfficerPortal({ initialSessionId }) {
                   : 'bg-canvas-card text-ink-muted hover:text-ink border border-canvas-border'
               }`}
             >
-              Auto-Approved (&lt; 25)
+              {t('tab_approved')}
             </button>
 
             <button
@@ -156,7 +158,7 @@ export default function OfficerPortal({ initialSessionId }) {
                   : 'bg-canvas-card text-ink-muted hover:text-ink border border-canvas-border'
               }`}
             >
-              Auto-Rejected (&gt; 60)
+              {t('tab_rejected')}
             </button>
           </div>
 
