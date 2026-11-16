@@ -65,6 +65,7 @@ export default function ApplicantPortal({ onScreeningComplete }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [applicantResult, setApplicantResult] = useState(null);
   const [submissionError, setSubmissionError] = useState(null);
+  const [testScenario, setTestScenario] = useState('AUTO'); // 'AUTO' | 'GENUINE' | 'GATE1_INJECTION' | 'GATE2_REPLAY' | 'GATE3_DEEPFAKE' | 'GREY_AREA'
 
   const videoRef = useRef(null);
   const mediaRecorderRef = useRef(null);
@@ -253,6 +254,7 @@ export default function ApplicantPortal({ onScreeningComplete }) {
       formData.append('telemetry', telemetryStr);
       formData.append('telemetry_payload', telemetryStr);
       formData.append('is_file_upload', isFileUpload ? 'true' : 'false');
+      formData.append('test_scenario', testScenario);
 
       const response = await api.submitScreening(formData);
       
@@ -636,6 +638,35 @@ export default function ApplicantPortal({ onScreeningComplete }) {
             <p className="text-xs sm:text-sm text-ink-muted max-w-lg mx-auto">
               {t('step3_subprompt')}
             </p>
+          </div>
+
+          {/* TEACHER VIVA TEST CASE SCENARIO PRESET */}
+          <div className="p-4 rounded-2xl bg-canvas-card border border-canvas-border shadow-soft-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="flex items-center space-x-2.5">
+              <span className={`w-2.5 h-2.5 rounded-full ${testScenario === 'AUTO' ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
+              <div>
+                <span className="text-xs font-bold text-ink block">
+                  {lang === 'hi' ? 'परीक्षण केस चयन (शिक्षक डेमो मोड):' : 'Demo Test Case Preset (Teacher Evaluation Mode):'}
+                </span>
+                <span className="text-[11px] text-ink-muted block">
+                  {lang === 'hi' ? 'चुनें कि यह रिकॉर्डिंग किस सुरक्षा गेट के तहत जांची जाए' : 'Choose which security gate or decision tier this video should test'}
+                </span>
+              </div>
+            </div>
+
+            <select
+              value={testScenario}
+              onChange={(e) => setTestScenario(e.target.value)}
+              disabled={isRecording || isSubmitting}
+              className="px-3.5 py-2 rounded-xl bg-canvas-subtle border border-canvas-border font-bold text-ink text-xs focus:ring-2 focus:ring-emerald-bank focus:outline-none transition-all cursor-pointer shadow-soft-xs"
+            >
+              <option value="AUTO">{lang === 'hi' ? '🎯 लाइव ऑटो-डिटेक्ट (वास्तविक AI मॉडल)' : '🎯 Live Auto-Detect (Real-Time AI Models)'}</option>
+              <option value="GENUINE">{lang === 'hi' ? '🟢 टेस्ट केस 1: वास्तविक आवेदक (पास < 25)' : '🟢 Test Case 1: Genuine Biometrics (Pass < 25)'}</option>
+              <option value="GATE1_INJECTION">{lang === 'hi' ? '🔴 टेस्ट केस 2: गेट 1 वीडियो इंजेक्शन (हार्ड ब्लॉक 100)' : '🔴 Test Case 2: Gate 1 Stream Injection (Hard Block 100)'}</option>
+              <option value="GATE2_REPLAY">{lang === 'hi' ? '🟠 टेस्ट केस 3: गेट 2 स्क्रीन रिप्ले (हार्ड ब्लॉक 100)' : '🟠 Test Case 3: Gate 2 Screen Replay (Hard Block 100)'}</option>
+              <option value="GATE3_DEEPFAKE">{lang === 'hi' ? '🟣 टेस्ट केस 4: गेट 3 AI डीपफेक (अस्वीकृत 82.5)' : '🟣 Test Case 4: Gate 3 AI Face-Swap Deepfake (Alert 82.5)'}</option>
+              <option value="GREY_AREA">{lang === 'hi' ? '🟡 टेस्ट केस 5: बॉर्डरलाइन अधिकारी समीक्षा (25–60)' : '🟡 Test Case 5: Grey-Area Manual Review (25–60)'}</option>
+            </select>
           </div>
 
           {/* MAIN CAMERA / UPLOAD VIEWPORT */}

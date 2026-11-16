@@ -9,7 +9,8 @@ import {
   CheckCircle2, 
   Info,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Clock
 } from 'lucide-react';
 import { api } from '../../services/api';
 import { useLanguage } from '../../context/LanguageContext';
@@ -65,6 +66,17 @@ export default function JudgeSandboxBar({ onScenarioSimulated }) {
       title: lang === 'hi' ? 'गेट 3: एआई डीपफेक (GAN फेस-स्वैप)' : 'Gate 3: AI Deepfake (Face-Swap GAN)',
       desc: lang === 'hi' ? 'चेहरे पर कृत्रिम ब्लेंडिंग सीम और विकृति (EfficientNet-B0)' : 'Synthetic facial blending seam anomalies flagged via Grad-CAM',
       expected: lang === 'hi' ? 'स्वतः अस्वीकृत (जोखिम 82.5)' : 'Auto-Rejected (Risk Score 82.5)'
+    },
+    {
+      id: 'GREY_AREA',
+      badge: lang === 'hi' ? 'समीक्षा 25–60' : 'REVIEW 25–60',
+      badgeColor: 'bg-amber-soft text-amber-bank border-amber-border',
+      btnColor: 'hover:border-amber-500/60 hover:bg-amber-soft/30',
+      icon: Clock,
+      iconColor: 'text-amber-bank',
+      title: lang === 'hi' ? 'बॉर्डरलाइन जोखिम (अधिकारी समीक्षा)' : 'Grey-Area Risk (Manual Officer Review)',
+      desc: lang === 'hi' ? 'हल्की विसंगति, अनुपालन अधिकारी द्वारा मैन्युअल सत्यापन आवश्यक' : 'Borderline anomaly score requiring human compliance officer verification',
+      expected: lang === 'hi' ? 'समीक्षा लंबित (जोखिम ~30.0)' : 'Requires Review (Risk Score ~30.0)'
     }
   ];
 
@@ -131,7 +143,7 @@ export default function JudgeSandboxBar({ onScenarioSimulated }) {
       {isExpanded && (
         <div className="p-4 sm:p-5 space-y-4 animate-in fade-in duration-200">
           
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3">
             {scenarios.map((sc) => {
               const IconComp = sc.icon;
               const isCurrent = activeScenario === sc.id && isSimulating;

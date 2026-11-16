@@ -99,4 +99,19 @@ export const api = {
     }
     return data;
   },
+
+  // Clear all screening sessions and audit logs for clean teacher demo
+  async clearAllSessions() {
+    const res = await fetch(`${API_BASE_URL}/sessions/clear/`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || 'Failed to clear session queue');
+    }
+    return data;
+  },
 };

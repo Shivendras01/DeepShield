@@ -9,7 +9,8 @@ import {
   CheckCircle2, 
   Clock, 
   ArrowRight,
-  ShieldAlert
+  ShieldAlert,
+  Trash2
 } from 'lucide-react';
 import ForensicDossier from './ForensicDossier';
 import JudgeSandboxBar from './JudgeSandboxBar';
@@ -37,6 +38,21 @@ export default function OfficerPortal({ initialSessionId }) {
     } catch (err) {
       setError(err.message || 'Failed to load session queue.');
       setSessions([]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleClearQueue = async () => {
+    if (!window.confirm(lang === 'hi' ? 'क्या आप समीक्षा कतार के सभी सत्र रिकॉर्ड हटाना चाहते हैं?' : 'Clear all screening sessions and audit logs for a fresh demo?')) {
+      return;
+    }
+    setIsLoading(true);
+    try {
+      await api.clearAllSessions();
+      await fetchSessions();
+    } catch (err) {
+      setError(err.message || 'Failed to clear session queue.');
     } finally {
       setIsLoading(false);
     }
@@ -106,14 +122,28 @@ export default function OfficerPortal({ initialSessionId }) {
               </p>
             </div>
 
-            <button
-              onClick={fetchSessions}
-              disabled={isLoading}
-              className="self-start sm:self-auto px-4 py-2 rounded-xl bg-canvas-card hover:bg-canvas-subtle text-ink text-xs font-semibold border border-canvas-border shadow-soft-sm transition-all flex items-center space-x-2"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 text-emerald-bank ${isLoading ? 'animate-spin' : ''}`} />
-              <span>Refresh Queue</span>
-            </button>
+            <div className="flex items-center space-x-2 self-start sm:self-auto">
+              {sessions.length > 0 && (
+                <button
+                  onClick={handleClearQueue}
+                  disabled={isLoading}
+                  className="px-3.5 py-2 rounded-xl bg-canvas-card hover:bg-wine-soft text-ink-muted hover:text-wine-bank text-xs font-semibold border border-canvas-border hover:border-wine-border shadow-soft-sm transition-all flex items-center space-x-1.5"
+                  title="Wipe review queue for clean demo"
+                >
+                  <Trash2 className="w-3.5 h-3.5 text-wine-bank" />
+                  <span>{lang === 'hi' ? 'कतार साफ़ करें' : 'Clear Queue'}</span>
+                </button>
+              )}
+
+              <button
+                onClick={fetchSessions}
+                disabled={isLoading}
+                className="px-4 py-2 rounded-xl bg-canvas-card hover:bg-canvas-subtle text-ink text-xs font-semibold border border-canvas-border shadow-soft-sm transition-all flex items-center space-x-2"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 text-emerald-bank ${isLoading ? 'animate-spin' : ''}`} />
+                <span>Refresh Queue</span>
+              </button>
+            </div>
           </div>
 
           {/* Judge Viva Attack Simulation Sandbox */}
