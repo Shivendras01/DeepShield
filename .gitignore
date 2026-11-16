@@ -64,3 +64,11 @@ Thumbs.db
 .vscode/
 *.swp
 *.swo
+
+# Local Work & Scratch / Generated Presentations
+work/
+*.pptx
+*.ppt
+sample_test_videos/
+build_presentation.py
+
