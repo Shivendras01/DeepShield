@@ -22,6 +22,7 @@ import {
   Video as VideoIcon
 } from 'lucide-react';
 import RiskGauge from './RiskGauge';
+import ForensicReportModal from './ForensicReportModal';
 import { resolveMediaUrl, api } from '../../services/api';
 import { useLanguage } from '../../context/LanguageContext';
 
@@ -31,6 +32,7 @@ export default function ForensicDossier({ session, onBack, onReviewSubmitted }) 
   const [submittingAction, setSubmittingAction] = useState(null); // 'APPROVE' | 'REJECT' | null
   const [actionSuccess, setActionSuccess] = useState(null);
   const [actionError, setActionError] = useState(null);
+  const [showReportModal, setShowReportModal] = useState(false);
 
   // Lightbox / Zoom Modal State
   const [activeModalArtifact, setActiveModalArtifact] = useState(null);
@@ -57,8 +59,8 @@ export default function ForensicDossier({ session, onBack, onReviewSubmitted }) 
   const livenessChan = channels.find(c => c.channel === 'LIVENESS') || {};
   const telemetryChan = channels.find(c => c.channel === 'TELEMETRY') || {};
 
-  const gradcamArtifact = artifacts.find(a => a.artifact_type === 'GRADCAM');
-  const earArtifact = artifacts.find(a => a.artifact_type === 'EAR_PLOT');
+  const gradcamArtifact = artifacts.find(a => a.artifact_type === 'GRADCAM_HEATMAP' || a.artifact_type === 'GRADCAM');
+  const earArtifact = artifacts.find(a => a.artifact_type === 'EAR_TIME_SERIES' || a.artifact_type === 'EAR_PLOT');
   const videoArtifact = artifacts.find(a => a.artifact_type === 'APPLICANT_VIDEO' || a.artifact_type === 'VIDEO');
 
   // Video fallback URL
@@ -105,8 +107,8 @@ export default function ForensicDossier({ session, onBack, onReviewSubmitted }) 
   return (
     <div className="space-y-6">
       
-      {/* Top Bar with Back Button & Breadcrumbs */}
-      <div className="flex items-center justify-between">
+      {/* Top Bar with Back Button, Export PDF Certificate & Breadcrumbs */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <button
           onClick={onBack}
           className="text-xs font-semibold text-ink-muted hover:text-ink transition-colors flex items-center space-x-1.5"
@@ -114,15 +116,25 @@ export default function ForensicDossier({ session, onBack, onReviewSubmitted }) 
           <span>← Back to Review Queue</span>
         </button>
 
-        <div className="flex items-center space-x-2 text-xs text-ink-muted">
-          <span className="font-mono text-[11px]">ID: {session.session_id}</span>
-          <span className={`px-2 py-0.5 rounded-full border text-[10px] font-bold uppercase ${
-            isCriticalAttack 
-              ? 'bg-wine-soft border-wine-border text-wine-bank' 
-              : 'bg-canvas-subtle border-canvas-border text-ink'
-          }`}>
-            {isCriticalAttack ? 'CRITICAL FRAUD' : session.status}
-          </span>
+        <div className="flex items-center space-x-3">
+          <button
+            onClick={() => setShowReportModal(true)}
+            className="px-3.5 py-1.5 rounded-xl bg-canvas-card hover:bg-canvas-subtle border border-emerald-bank/40 hover:border-emerald-bank text-emerald-bank hover:text-emerald-dark text-xs font-bold shadow-soft-sm transition-all flex items-center space-x-2"
+          >
+            <FileText className="w-4 h-4 text-emerald-bank" />
+            <span>{lang === 'hi' ? '📄 ऑडिट प्रमाणपत्र (PDF)' : '📄 Export Audit Certificate (PDF)'}</span>
+          </button>
+
+          <div className="flex items-center space-x-2 text-xs text-ink-muted">
+            <span className="font-mono text-[11px]">ID: {session.session_id}</span>
+            <span className={`px-2 py-0.5 rounded-full border text-[10px] font-bold uppercase ${
+              isCriticalAttack 
+                ? 'bg-wine-soft border-wine-border text-wine-bank' 
+                : 'bg-canvas-subtle border-canvas-border text-ink'
+            }`}>
+              {isCriticalAttack ? 'CRITICAL FRAUD' : session.status}
+            </span>
+          </div>
         </div>
       </div>
 
@@ -694,6 +706,16 @@ export default function ForensicDossier({ session, onBack, onReviewSubmitted }) 
             </div>
           </div>
         </div>
+      )}
+
+      {/* ============================================================== */}
+      {/* REGULATORY FORENSIC AUDIT CERTIFICATE MODAL (PDF)             */}
+      {/* ============================================================== */}
+      {showReportModal && (
+        <ForensicReportModal
+          session={session}
+          onClose={() => setShowReportModal(false)}
+        />
       )}
 
     </div>

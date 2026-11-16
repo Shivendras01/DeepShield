@@ -83,4 +83,20 @@ export const api = {
     }
     return data;
   },
+
+  // Judge Demo / Viva Attack Scenario Simulation
+  async simulateScenario(scenario) {
+    const res = await fetch(`${API_BASE_URL}/simulate/`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ scenario }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || 'Scenario simulation failed');
+    }
+    return data;
+  },
 };

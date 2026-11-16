@@ -645,3 +645,261 @@ class SessionListApiView(APIView):
             })
 
         return Response({"count": len(session_list), "results": session_list}, status=status.HTTP_200_OK)
+
+
+class JudgeSimulationApiView(APIView):
+    """
+    Demo / Viva Sandbox endpoint for academic evaluators and judges.
+    Simulates real-world KYC scenarios across all 3 detection gates in 1 click:
+    - 'GENUINE': Live webcam with organic blinks (Score < 25 -> Auto-Approved)
+    - 'GATE1_INJECTION': Pre-recorded file or OBS Virtual Camera bypass (Gate 1 Hard Block -> Score 100.0)
+    - 'GATE2_REPLAY': Smartphone OLED display screen replay with Moiré grid (Gate 2 Hard Block -> Score 100.0)
+    - 'GATE3_DEEPFAKE': GAN/Diffusion facial deepfake with blending seam anomalies (Gate 3 Alert -> Score > 60.0)
+    """
+    def post(self, request, *args, **kwargs):
+        scenario = request.data.get("scenario", "GENUINE").upper()
+        now_utc = datetime.now(timezone.utc)
+        evidence_dir = os.path.join(settings.MEDIA_ROOT, "evidence")
+        os.makedirs(evidence_dir, exist_ok=True)
+
+        if scenario == "GATE1_INJECTION":
+            client_id = "sbi-vcip-gateway-attacker"
+            applicant_name = "Karan Patel (Simulated Attacker)"
+            id_type = "PAN Card"
+            id_number = "ABCDE1234F"
+            mobile = "+91 91234 56789"
+            device_label = "OBS Virtual Camera v28.1"
+            is_file_upload = True
+            telemetry_score = 100.0
+            telemetry_flagged = True
+            telemetry_notes = "Critical Gate 1 Failure: Pre-recorded video injection detected. File upload bypasses physical camera sensor."
+            
+            spatial_score = 14.2
+            spatial_flagged = False
+            spatial_notes = "Evaluated 20 face crops; no visual synthesis."
+            
+            liveness_score = 10.5
+            liveness_flagged = False
+            liveness_notes = "Natural liveness detected; zero presentation artifacts."
+            
+            fused_score = 100.0
+            risk_band = "HIGH"
+            is_hard_block = True
+            block_type = "VIRTUAL_CAMERA_INJECTION"
+            session_status = ScreeningSession.StatusChoices.FAILED
+            policy_decision = "AUTO_REJECTED"
+            escalation_reason = "Critical Gate 1 Failure: Pre-recorded video injection detected. File upload bypasses physical camera sensor."
+            target_video = "video_3f9af6b8-e4dc-4345-bc22-3687fccfcce2.mp4"
+
+        elif scenario == "GATE2_REPLAY":
+            client_id = "sbi-vcip-gateway-attacker"
+            applicant_name = "Rohan Verma (Simulated Replay Attack)"
+            id_type = "Voter ID"
+            id_number = "XYZ9876543"
+            mobile = "+91 99887 76655"
+            device_label = "Integrated HD Webcam"
+            is_file_upload = False
+            telemetry_score = 5.0
+            telemetry_flagged = False
+            telemetry_notes = "Hardware webcam sensor verified; natural frame jitter (std=3.12ms)."
+            
+            spatial_score = 22.0
+            spatial_flagged = False
+            spatial_notes = "Evaluated 20 face crops; high-frequency screen grid patterns observed."
+            
+            liveness_score = 98.0
+            liveness_flagged = True
+            liveness_notes = "Presentation Attack: Digital screen replay detected. Chrominance distortion detected (ratio=0.245, VarCb=268.0, Sat=135.2)."
+            
+            fused_score = 100.0
+            risk_band = "HIGH"
+            is_hard_block = True
+            block_type = "PRESENTATION_ATTACK_REPLAY"
+            session_status = ScreeningSession.StatusChoices.FAILED
+            policy_decision = "AUTO_REJECTED"
+            escalation_reason = "Critical presentation attack: SCREEN_REPLAY detected via multi-spectral PAD analysis."
+            target_video = "video_de8d3fb4-ab21-4405-bdb7-4e2efd0d1b5e.mp4"
+
+        elif scenario == "GATE3_DEEPFAKE":
+            client_id = "sbi-vcip-gateway-target"
+            applicant_name = "Synthetic Deepfake Target (GAN Face-Swap)"
+            id_type = "Indian Passport"
+            id_number = "Z1234567"
+            mobile = "+91 97766 55443"
+            device_label = "Integrated HD Webcam"
+            is_file_upload = False
+            telemetry_score = 5.0
+            telemetry_flagged = False
+            telemetry_notes = "Hardware webcam capture path verified."
+            
+            spatial_score = 94.0
+            spatial_flagged = True
+            spatial_notes = "EfficientNet-B0 flagged severe synthetic blending seams around facial landmarks (probability=0.94)."
+            
+            liveness_score = 16.5
+            liveness_flagged = False
+            liveness_notes = "Physiological liveness verified; blink dynamics observed."
+            
+            fused_score = 82.5
+            risk_band = "HIGH"
+            is_hard_block = False
+            block_type = None
+            session_status = ScreeningSession.StatusChoices.FAILED
+            policy_decision = "AUTO_REJECTED"
+            escalation_reason = "High-confidence synthetic facial manipulation detected in visual frames (score=94.0)."
+            target_video = "video_f726e9a1-649e-4ed2-8a4f-521ae85d38b1.mp4"
+
+        else: # GENUINE
+            client_id = "sbi-vcip-gateway-demo"
+            applicant_name = "Aditya Sharma (Demo Applicant)"
+            id_type = "Aadhaar Card"
+            id_number = "4829-8472-9041"
+            mobile = "+91 98765 43210"
+            device_label = "Integrated HD Webcam"
+            is_file_upload = False
+            telemetry_score = 5.0
+            telemetry_flagged = False
+            telemetry_notes = "Hardware webcam sensor verified; natural frame jitter (std=3.42ms at 29.8 FPS)."
+            
+            spatial_score = 12.0
+            spatial_flagged = False
+            spatial_notes = "Verified 20 face crops; natural skin texture with no synthetic blending artifacts."
+            
+            liveness_score = 8.0
+            liveness_flagged = False
+            liveness_notes = "Natural facial liveness verified: 2 spontaneous blink events and organic micro-motion."
+            
+            fused_score = 10.4
+            risk_band = "LOW"
+            is_hard_block = False
+            block_type = None
+            session_status = ScreeningSession.StatusChoices.COMPLETED
+            policy_decision = "AUTO_APPROVED"
+            escalation_reason = ""
+            target_video = "video_3ddbb3f0-9bea-4a86-9fc2-c8f05d07d2f2.mp4"
+
+        session = ScreeningSession.objects.create(
+            client_id=client_id,
+            duration_s=5.0,
+            frames_total=150,
+            frames_used=20,
+            status=session_status
+        )
+
+        # Copy target video to session video if exists
+        src_v = os.path.join(evidence_dir, target_video)
+        dest_v_name = f"video_{session.session_id}.mp4"
+        dest_v = os.path.join(evidence_dir, dest_v_name)
+        if os.path.exists(src_v):
+            import shutil
+            shutil.copyfile(src_v, dest_v)
+            EvidenceArtifact.objects.create(
+                session=session,
+                artifact_type=EvidenceArtifact.ArtifactTypeChoices.APPLICANT_VIDEO,
+                storage_ref=f"{settings.MEDIA_URL}evidence/{dest_v_name}",
+                checksum="verified"
+            )
+
+        # Copy sample Grad-CAM and EAR plot
+        src_g = os.path.join(evidence_dir, "mock_gradcam.jpg")
+        dest_g_name = f"gradcam_{session.session_id}.jpg"
+        if os.path.exists(src_g):
+            import shutil
+            shutil.copyfile(src_g, os.path.join(evidence_dir, dest_g_name))
+            EvidenceArtifact.objects.create(
+                session=session,
+                artifact_type=EvidenceArtifact.ArtifactTypeChoices.GRADCAM_HEATMAP,
+                storage_ref=f"{settings.MEDIA_URL}evidence/{dest_g_name}",
+                checksum="verified"
+            )
+
+        src_e = os.path.join(evidence_dir, "mock_ear_plot.png")
+        dest_e_name = f"ear_{session.session_id}.png"
+        if os.path.exists(src_e):
+            import shutil
+            shutil.copyfile(src_e, os.path.join(evidence_dir, dest_e_name))
+            EvidenceArtifact.objects.create(
+                session=session,
+                artifact_type=EvidenceArtifact.ArtifactTypeChoices.EAR_TIME_SERIES,
+                storage_ref=f"{settings.MEDIA_URL}evidence/{dest_e_name}",
+                checksum="verified"
+            )
+
+        # Channel Results
+        ChannelResult.objects.create(
+            session=session,
+            channel=ChannelResult.ChannelChoices.SPATIAL,
+            raw_score=spatial_score / 100.0,
+            normalised_score=spatial_score,
+            flagged=spatial_flagged,
+            features_json={"notes": spatial_notes, "faces_detected": 20}
+        )
+        ChannelResult.objects.create(
+            session=session,
+            channel=ChannelResult.ChannelChoices.LIVENESS,
+            raw_score=liveness_score / 100.0,
+            normalised_score=liveness_score,
+            flagged=liveness_flagged,
+            features_json={
+                "notes": liveness_notes,
+                "blink_count": 2 if scenario != "GATE2_REPLAY" else 0,
+                "presentation_attack_detected": scenario == "GATE2_REPLAY",
+                "attack_type": "SCREEN_REPLAY" if scenario == "GATE2_REPLAY" else None,
+                "moire_score": 0.86 if scenario == "GATE2_REPLAY" else 0.72,
+                "chroma_ratio": 0.245 if scenario == "GATE2_REPLAY" else 0.05
+            }
+        )
+        ChannelResult.objects.create(
+            session=session,
+            channel=ChannelResult.ChannelChoices.TELEMETRY,
+            raw_score=telemetry_score / 100.0,
+            normalised_score=telemetry_score,
+            flagged=telemetry_flagged,
+            features_json={
+                "notes": telemetry_notes,
+                "virtual_camera_detected": scenario == "GATE1_INJECTION",
+                "is_file_upload": is_file_upload,
+                "device_identity": {"device_label": device_label, "is_virtual": scenario == "GATE1_INJECTION"}
+            }
+        )
+
+        # Fusion Result
+        FusionResult.objects.create(
+            session=session,
+            fusion_version="v1.0-weighted-escalated",
+            weights_json={"spatial": 0.50, "liveness": 0.30, "telemetry": 0.20},
+            fused_score=fused_score,
+            risk_band=risk_band,
+            escalated=is_hard_block or spatial_flagged,
+            escalation_reason=escalation_reason,
+            recommendation=policy_decision
+        )
+
+        # Audit Log
+        audit_payload = {
+            "session_id": str(session.session_id),
+            "applicant_name": applicant_name,
+            "id_type": id_type,
+            "id_number": id_number,
+            "scenario": scenario,
+            "fused_score": fused_score,
+            "timestamp": now_utc.isoformat()
+        }
+        payload_hash = hashlib.sha256(json.dumps(audit_payload, sort_keys=True).encode("utf-8")).hexdigest()
+        AuditLog.objects.create(
+            session=session,
+            actor="JUDGE_DEMO_SANDBOX",
+            action="SCENARIO_SIMULATED",
+            payload_hash=payload_hash,
+            metadata_json=audit_payload
+        )
+
+        return Response({
+            "status": "success",
+            "scenario": scenario,
+            "session_id": str(session.session_id),
+            "applicant_name": applicant_name,
+            "fused_score": fused_score,
+            "risk_band": risk_band,
+            "policy_decision": policy_decision
+        }, status=status.HTTP_201_CREATED)

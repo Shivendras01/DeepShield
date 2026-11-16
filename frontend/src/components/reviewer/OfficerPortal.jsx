@@ -12,6 +12,7 @@ import {
   ShieldAlert
 } from 'lucide-react';
 import ForensicDossier from './ForensicDossier';
+import JudgeSandboxBar from './JudgeSandboxBar';
 import { api } from '../../services/api';
 import { useLanguage } from '../../context/LanguageContext';
 
@@ -114,6 +115,16 @@ export default function OfficerPortal({ initialSessionId }) {
               <span>Refresh Queue</span>
             </button>
           </div>
+
+          {/* Judge Viva Attack Simulation Sandbox */}
+          <JudgeSandboxBar
+            onScenarioSimulated={(newSessionId) => {
+              fetchSessions();
+              if (newSessionId) {
+                setSelectedSessionId(newSessionId);
+              }
+            }}
+          />
 
           {/* Three-Tier Policy Filter Tabs */}
           <div className="flex items-center space-x-2 overflow-x-auto pb-1 text-xs">
