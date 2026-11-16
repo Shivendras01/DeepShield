@@ -783,25 +783,51 @@ export default function ApplicantPortal({ onScreeningComplete }) {
                       </button>
                     </div>
                   ) : (
-                    <label className="cursor-pointer group flex flex-col items-center space-y-3">
-                      <div className="w-16 h-16 rounded-full bg-emerald-soft flex items-center justify-center text-emerald-bank group-hover:scale-110 transition-transform">
-                        <Upload className="w-8 h-8" />
+                    <>
+                      <label className="cursor-pointer group flex flex-col items-center space-y-3">
+                        <div className="w-16 h-16 rounded-full bg-emerald-soft flex items-center justify-center text-emerald-bank group-hover:scale-110 transition-transform">
+                          <Upload className="w-8 h-8" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-bold text-ink">{t('upload_drop_label')}</p>
+                          <p className="text-xs text-ink-muted mt-0.5">{t('upload_sublabel')}</p>
+                        </div>
+                        <input
+                          type="file"
+                          accept="video/mp4,video/webm"
+                          className="hidden"
+                          onChange={(e) => {
+                            if (e.target.files && e.target.files[0]) {
+                              setSelectedFile(e.target.files[0]);
+                            }
+                          }}
+                        />
+                      </label>
+
+                      {/* Quick Demo Sample Loader */}
+                      <div className="pt-3 border-t border-canvas-border/50 w-full max-w-xs text-center">
+                        <span className="text-[10px] text-ink-faint uppercase font-bold block mb-1.5">
+                          {lang === 'hi' ? 'या तैयार परीक्षण वीडियो चुनें:' : 'Or load sample attack video:'}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            try {
+                              const res = await fetch('http://127.0.0.1:8000/media/evidence/sample_deepfake_faceswap.mp4');
+                              const blob = await res.blob();
+                              const file = new File([blob], 'sample_deepfake_faceswap.mp4', { type: 'video/mp4' });
+                              setSelectedFile(file);
+                            } catch (e) {
+                              console.error('Failed to load sample deepfake video', e);
+                            }
+                          }}
+                          className="px-3 py-1.5 rounded-lg bg-rose-soft hover:bg-rose-100 text-rose-bank text-[11px] font-bold border border-rose-border transition-colors inline-flex items-center space-x-1.5 shadow-soft-xs"
+                        >
+                          <Sparkles className="w-3.5 h-3.5" />
+                          <span>{lang === 'hi' ? '🎭 AI डीपफेक वीडियो लोड करें' : '🎭 Load Sample AI Deepfake (Face-Swap)'}</span>
+                        </button>
                       </div>
-                      <div>
-                        <p className="text-sm font-bold text-ink">{t('upload_drop_label')}</p>
-                        <p className="text-xs text-ink-muted mt-0.5">{t('upload_sublabel')}</p>
-                      </div>
-                      <input
-                        type="file"
-                        accept="video/mp4,video/webm"
-                        className="hidden"
-                        onChange={(e) => {
-                          if (e.target.files && e.target.files[0]) {
-                            setSelectedFile(e.target.files[0]);
-                          }
-                        }}
-                      />
-                    </label>
+                    </>
                   )}
                 </div>
               )}
