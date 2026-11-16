@@ -9,6 +9,8 @@ from .views import (
     SessionListApiView,
     SessionDetailApiView,
     SessionReviewActionApiView,
+    SessionClearApiView,
+    JudgeSimulationApiView,
 )
 
 urlpatterns = [
@@ -18,8 +20,12 @@ urlpatterns = [
     # Core Screening Endpoint (Dual-Perspective Payload)
     path('screen/', ScreeningLiveApiView.as_view(), name='screen-session'),
 
+    # Academic & Judge Demo Viva Sandbox
+    path('simulate/', JudgeSimulationApiView.as_view(), name='judge-simulate'),
+
     # Bank Reviewer Portal Endpoints
     path('sessions/', SessionListApiView.as_view(), name='session-list'),
+    path('sessions/clear/', SessionClearApiView.as_view(), name='session-clear'),
     path('sessions/<uuid:session_id>/', SessionDetailApiView.as_view(), name='session-detail'),
     path('sessions/<uuid:session_id>/review/', SessionReviewActionApiView.as_view(), name='session-review'),
 ]

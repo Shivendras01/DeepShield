@@ -92,6 +92,7 @@ class EvidenceArtifact(models.Model):
         GRADCAM_HEATMAP = 'GRADCAM_HEATMAP', 'Grad-CAM Saliency Map'
         EAR_TIME_SERIES = 'EAR_TIME_SERIES', 'EAR Temporal Blink Curve'
         FRAME_CROP = 'FRAME_CROP', 'Extracted Face Crop'
+        APPLICANT_VIDEO = 'APPLICANT_VIDEO', 'Original Applicant Video'
 
     session = models.ForeignKey(ScreeningSession, on_delete=models.CASCADE, related_name='evidence_artifacts')
     frame_index = models.PositiveIntegerField(null=True, blank=True, help_text="Frame index if artifact is tied to a specific frame")

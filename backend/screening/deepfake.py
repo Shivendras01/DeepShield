@@ -44,11 +44,15 @@ class SpatialDeepfakeDetector:
         self,
         weights_path: Optional[str] = None,
         device: str = "cpu",
-        operating_threshold: float = 0.50
+        operating_threshold: float = 0.50,
+        temperature: float = 1.15,
+        calibration_bias: float = 1.05
     ):
         self.device = torch.device(device)
         self.operating_threshold = operating_threshold
         self.weights_path = weights_path
+        self.temperature = temperature
+        self.calibration_bias = calibration_bias
 
         # Initialize network
         self.model = EfficientNetB0Classifier(pretrained=True)
@@ -103,8 +107,13 @@ class SpatialDeepfakeDetector:
 
         with torch.no_grad():
             logits = self.model(batch_tensor).squeeze(-1)
-            # Sigmoid maps logit to [0, 1] manipulation probability
-            probs = torch.sigmoid(logits).cpu().numpy()
+            # Apply domain-adaptation calibration (temperature scaling and baseline centering)
+            # to adjust for real-world webcam CMOS sensor gain and browser WebM/VP8 compression artifacts
+            if self.is_custom_checkpoint:
+                calibrated_logits = (logits - self.calibration_bias) / self.temperature
+            else:
+                calibrated_logits = logits
+            probs = torch.sigmoid(calibrated_logits).cpu().numpy()
 
         # Ensure probs is an array even for 1 frame
         if probs.ndim == 0:
@@ -112,19 +121,21 @@ class SpatialDeepfakeDetector:
 
         frame_scores = [float(p) for p in probs]
 
-        # Frame-to-video aggregation (Mean & 90th percentile)
+        # Robust frame-to-video aggregation:
+        # Blends mean and 75th percentile to guard against transient compression glitch frames
         mean_score = float(np.mean(frame_scores))
+        p75_score = float(np.percentile(frame_scores, 75))
         p90_score = float(np.percentile(frame_scores, 90))
         highest_frame_idx = int(np.argmax(frame_scores))
 
-        # Composite video score emphasizes high-percentile localized manipulation
-        video_score = round(0.5 * mean_score + 0.5 * p90_score, 4)
+        # Composite video score emphasizes temporal consistency across the 5-second clip
+        video_score = round(0.6 * mean_score + 0.4 * p75_score, 4)
         normalised_score = round(video_score * 100.0, 1)
         flagged = video_score >= self.operating_threshold
 
         notes = (
             f"Evaluated {len(face_crops)} face crops using EfficientNet-B0. "
-            f"Mean manipulation probability={mean_score:.2f}, 90th percentile={p90_score:.2f}."
+            f"Mean manipulation probability={mean_score:.2f}, 75th percentile={p75_score:.2f}."
         )
 
         return {

@@ -65,6 +65,19 @@ class RiskFusionEngineTests(TestCase):
         self.assertGreaterEqual(result["fused_score"], 75.0)
         self.assertIn("Corroborating indicators", result["escalation_reason"])
 
+    def test_presentation_attack_escalation(self):
+        # Even with low spatial and telemetry, presentation attack escalates to HIGH
+        result = self.engine.fuse(
+            spatial_score=10.0,
+            liveness_score=94.0,
+            telemetry_score=5.0,
+            liveness_meta={"presentation_attack_detected": True, "attack_type": "SCREEN_REPLAY"}
+        )
+        self.assertTrue(result["escalated"])
+        self.assertEqual(result["risk_band"], "HIGH")
+        self.assertGreaterEqual(result["fused_score"], 92.0)
+        self.assertIn("Critical presentation attack", result["escalation_reason"])
+
     def test_score_normalization_flexibility(self):
         # Supports both [0, 1.0] fractions and [0, 100.0] percentages
         res_fraction = self.engine.fuse(spatial_score=0.20, liveness_score=0.20, telemetry_score=0.20)

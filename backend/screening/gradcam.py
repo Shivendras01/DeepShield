@@ -1,8 +1,11 @@
 """
 DeepShield Grad-CAM Saliency Map Generator.
 
-Implements Gradient-weighted Class Activation Mapping (Grad-CAM)
+Implements Confidence-Scaled Gradient-weighted Class Activation Mapping (Grad-CAM)
 for EfficientNet-B0 to produce explainable visual evidence of spatial forgery.
+Supports dual-mode visualization:
+  - Low Risk (< 35): Verified Natural Biometrics (cool cyan/green subdued overlay)
+  - High Risk (>= 35): Synthetic Anomaly Saliency (vivid red/amber heat alert)
 """
 
 import os
@@ -15,7 +18,7 @@ import torch.nn.functional as F
 
 class GradCAMGenerator:
     """
-    Computes post-hoc Grad-CAM saliency heatmaps on flagged facial crops.
+    Computes confidence-scaled Grad-CAM saliency heatmaps on flagged facial crops.
     """
     def __init__(self, detector_model):
         """
@@ -46,21 +49,25 @@ class GradCAMGenerator:
         self,
         face_crop_rgb: np.ndarray,
         output_path: str,
-        colormap: int = cv2.COLORMAP_JET
+        score: float = 50.0,
+        colormap: Optional[int] = None
     ) -> str:
         """
-        Generates and saves a Grad-CAM heatmap overlay onto the original face crop.
+        Generates and saves a confidence-scaled Grad-CAM heatmap overlay onto the original face crop.
 
         :param face_crop_rgb: Original face crop image (224x224x3, uint8 RGB).
         :param output_path: File path where overlay image should be saved.
-        :param colormap: OpenCV colormap for heatmap rendering.
+        :param score: Spatial fraud risk score (0.0 to 100.0). Scales saliency intensity.
+        :param colormap: Optional OpenCV colormap override.
         :return: Saved file path.
         """
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
-        # Prepare normalized tensor for single image
+        h, w, _ = face_crop_rgb.shape
+        face_bgr = cv2.cvtColor(face_crop_rgb, cv2.COLOR_RGB2BGR)
+
+        # 1. Forward & Backward tensor pass
         transform_input = face_crop_rgb.astype(np.float32) / 255.0
-        # ImageNet normalization
         mean = np.array([0.485, 0.456, 0.406])
         std = np.array([0.229, 0.224, 0.225])
         norm_img = (transform_input - mean) / std
@@ -68,33 +75,25 @@ class GradCAMGenerator:
         tensor = torch.from_numpy(norm_img.transpose(2, 0, 1)).unsqueeze(0).float().to(self.device)
         tensor.requires_grad = True
 
-        # Forward pass
         self.model.zero_grad()
         output = self.model(tensor).squeeze()
-
-        # Backward pass on the manipulation logit
         output.backward(retain_graph=True)
 
         if self.activations is None or self.gradients is None:
-            # Fallback in case hooks failed: save raw crop
-            cv2.imwrite(output_path, cv2.cvtColor(face_crop_rgb, cv2.COLOR_RGB2BGR))
+            # Fallback in case hooks failed
+            cv2.imwrite(output_path, face_bgr)
             return output_path
 
-        # Global average pooling of gradients: (batch, channels, H, W) -> (channels,)
+        # 2. Compute raw Grad-CAM activation map
         grads = self.gradients.cpu().data.numpy()[0]
         acts = self.activations.cpu().data.numpy()[0]
+        weights = np.mean(grads, axis=(1, 2))
 
-        weights = np.mean(grads, axis=(1, 2))  # Shape: (1280,)
+        cam = np.zeros(acts.shape[1:], dtype=np.float32)
+        for i, w_val in enumerate(weights):
+            cam += w_val * acts[i]
 
-        # Linear combination of activations weighted by gradient importance
-        cam = np.zeros(acts.shape[1:], dtype=np.float32)  # Shape: (7, 7)
-        for i, w in enumerate(weights):
-            cam += w * acts[i]
-
-        # Apply ReLU to retain only positive influence on fraud score
         cam = np.maximum(cam, 0)
-
-        # Normalize between 0.0 and 1.0
         cam_max = np.max(cam)
         if cam_max > 0:
             cam = cam / cam_max
@@ -102,28 +101,42 @@ class GradCAMGenerator:
             cam = np.zeros_like(cam)
 
         # Resize heatmap to match original crop dimensions (224x224)
-        h, w, _ = face_crop_rgb.shape
         heatmap = cv2.resize(cam, (w, h))
 
-        # Convert heatmap to uint8 colormap (BGR for OpenCV)
-        heatmap_uint8 = np.uint8(255 * heatmap)
-        heatmap_colored = cv2.applyColorMap(heatmap_uint8, colormap)
+        # 3. Confidence Scaling & Dual-Mode Saliency
+        # Scale intensity by fraud probability (score / 100)
+        fraud_prob = min(max(float(score) / 100.0, 0.0), 1.0)
+        is_authentic = score < 35.0
 
-        # Convert original face crop from RGB to BGR for blending
-        face_bgr = cv2.cvtColor(face_crop_rgb, cv2.COLOR_RGB2BGR)
+        if is_authentic:
+            # Cool verification mode: subdued cyan/emerald highlights
+            active_colormap = colormap if colormap is not None else cv2.COLORMAP_SUMMER
+            # Attenuate overlay intensity for authentic face so skin is natural and visible
+            heatmap_scaled = np.uint8(255 * (heatmap * (0.15 + 0.35 * fraud_prob)))
+            heatmap_colored = cv2.applyColorMap(heatmap_scaled, active_colormap)
+            overlay = cv2.addWeighted(face_bgr, 0.85, heatmap_colored, 0.15, 0)
+            badge_text = f"Verified: Natural Biometrics (Risk {score:.1f})"
+            badge_color = (34, 197, 94)  # Tailwind emerald-500
+        else:
+            # Alert mode: high-contrast red/amber synthetic anomaly map
+            active_colormap = colormap if colormap is not None else cv2.COLORMAP_JET
+            heatmap_scaled = np.uint8(255 * (heatmap * (0.35 + 0.65 * fraud_prob)))
+            heatmap_colored = cv2.applyColorMap(heatmap_scaled, active_colormap)
+            overlay = cv2.addWeighted(face_bgr, 0.55, heatmap_colored, 0.45, 0)
+            badge_text = f"Anomaly Saliency (Risk {score:.1f})"
+            badge_color = (239, 68, 68)  # Tailwind red-500
 
-        # Alpha blend 60% original face + 40% Grad-CAM heatmap
-        overlay = cv2.addWeighted(face_bgr, 0.60, heatmap_colored, 0.40, 0)
-
-        # Draw explanatory diagnostic badge on bottom of frame
-        cv2.rectangle(overlay, (0, h - 24), (w, h), (15, 23, 42), -1)
+        # 4. Render sleek forensic diagnostic badge on bottom
+        cv2.rectangle(overlay, (0, h - 26), (w, h), (15, 23, 42), -1)
+        # Small accent indicator dot
+        cv2.circle(overlay, (12, h - 13), 4, badge_color, -1)
         cv2.putText(
             overlay,
-            "DeepShield Grad-CAM Saliency",
-            (8, h - 7),
+            badge_text,
+            (22, h - 9),
             cv2.FONT_HERSHEY_SIMPLEX,
-            0.42,
-            (255, 255, 255),
+            0.36,
+            (248, 250, 252),
             1,
             cv2.LINE_AA
         )
