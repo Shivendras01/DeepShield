@@ -70,10 +70,12 @@ export default function ApplicantPortal({ onScreeningComplete }) {
   const mediaRecorderRef = useRef(null);
   const recordedChunksRef = useRef([]);
   const frameTimestampsRef = useRef([]);
+  const cameraLabelRef = useRef('Integrated Camera');
+  const activeStreamRef = useRef(null);
 
   // Initialize or teardown camera only on the RECORDING step when in webcam mode
   useEffect(() => {
-    if (currentStep === 'RECORDING' && mode === 'webcam') {
+    if (currentStep === 'RECORDING' && mode === 'webcam' && !isSubmitting && !applicantResult) {
       startCamera();
     } else {
       stopCamera();
@@ -88,7 +90,10 @@ export default function ApplicantPortal({ onScreeningComplete }) {
         video: { width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 30 } },
         audio: false
       });
+      activeStreamRef.current = stream;
       setWebcamStream(stream);
+      const label = stream.getVideoTracks()[0]?.label || 'Integrated Camera';
+      cameraLabelRef.current = label;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
       }
@@ -98,9 +103,20 @@ export default function ApplicantPortal({ onScreeningComplete }) {
   };
 
   const stopCamera = () => {
+    if (activeStreamRef.current) {
+      activeStreamRef.current.getTracks().forEach(track => {
+        try { track.stop(); } catch (e) {}
+      });
+      activeStreamRef.current = null;
+    }
     if (webcamStream) {
-      webcamStream.getTracks().forEach(track => track.stop());
+      webcamStream.getTracks().forEach(track => {
+        try { track.stop(); } catch (e) {}
+      });
       setWebcamStream(null);
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
     }
   };
 
@@ -161,10 +177,14 @@ export default function ApplicantPortal({ onScreeningComplete }) {
 
     recorder.onstop = () => {
       const blob = new Blob(recordedChunksRef.current, { type: mimeType });
+      const videoUrl = URL.createObjectURL(blob);
       setRecordedBlob(blob);
-      setRecordedVideoUrl(URL.createObjectURL(blob));
+      setRecordedVideoUrl(videoUrl);
       setIsRecording(false);
       setRecordSecondsLeft(0);
+
+      // IMMEDIATELY SHUT OFF CAMERA HARDWARE SENSOR
+      stopCamera();
 
       // AUTO-SUBMIT IMMEDIATELY ON 5-SECOND COMPLETION!
       submitVerificationVideo(blob, mimeType);
@@ -218,7 +238,7 @@ export default function ApplicantPortal({ onScreeningComplete }) {
       const isFileUpload = mode === 'upload';
       const deviceLabel = isFileUpload
         ? 'File Upload Source'
-        : (webcamStream?.getVideoTracks()[0]?.label || 'Integrated Webcam');
+        : (cameraLabelRef.current || webcamStream?.getVideoTracks()[0]?.label || 'Integrated Camera');
 
       const telemetry = {
         user_agent: navigator.userAgent,
@@ -258,9 +278,13 @@ export default function ApplicantPortal({ onScreeningComplete }) {
     setSelectedFile(null);
     setSubmissionError(null);
     setCurrentStep('RECORDING');
+    if (mode === 'webcam') {
+      startCamera();
+    }
   };
 
   const handleStartFresh = () => {
+    stopCamera();
     setApplicantResult(null);
     setRecordedBlob(null);
     setRecordedVideoUrl(null);
@@ -621,22 +645,52 @@ export default function ApplicantPortal({ onScreeningComplete }) {
               
               {mode === 'webcam' ? (
                 <>
-                  <video
-                    ref={videoRef}
-                    autoPlay
-                    playsInline
-                    muted
-                    className="w-full h-full object-cover transform -scale-x-100"
-                  />
+                  {recordedVideoUrl ? (
+                    <video
+                      src={recordedVideoUrl}
+                      autoPlay
+                      loop
+                      playsInline
+                      muted
+                      className="w-full h-full object-cover transform -scale-x-100"
+                    />
+                  ) : (
+                    <video
+                      ref={videoRef}
+                      autoPlay
+                      playsInline
+                      muted
+                      className="w-full h-full object-cover transform -scale-x-100"
+                    />
+                  )}
+                  
+                  {/* Processing Overlay when 5s recording finished and camera is stopped */}
+                  {isSubmitting && (
+                    <div className="absolute inset-0 bg-slate-950/75 backdrop-blur-sm flex flex-col items-center justify-center space-y-3 z-10 animate-in fade-in duration-200">
+                      <div className="w-12 h-12 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 flex items-center justify-center animate-spin">
+                        <RefreshCw className="w-6 h-6" />
+                      </div>
+                      <div className="text-center">
+                        <span className="text-sm font-bold text-white tracking-wide block">
+                          {lang === 'hi' ? 'कैमरा बंद • बायोमेट्रिक विश्लेषण जारी है...' : 'Camera Stopped • Analyzing Biometrics...'}
+                        </span>
+                        <span className="text-xs text-slate-300 mt-0.5 block">
+                          {lang === 'hi' ? 'कृपया प्रतीक्षा करें (3–5 सेकंड)...' : 'Uploading and screening 5-second video stream'}
+                        </span>
+                      </div>
+                    </div>
+                  )}
                   
                   {/* Biometric Oval Guide Overlay */}
-                  <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-                    <div className={`w-52 h-68 rounded-[50%] border-2 transition-all duration-300 ${
-                      isRecording 
-                        ? 'border-emerald-400 shadow-[0_0_35px_rgba(16,185,129,0.55)] scale-105' 
-                        : 'border-white/50 border-dashed'
-                    }`} />
-                  </div>
+                  {!isSubmitting && (
+                    <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+                      <div className={`w-52 h-68 rounded-[50%] border-2 transition-all duration-300 ${
+                        isRecording 
+                          ? 'border-emerald-400 shadow-[0_0_35px_rgba(16,185,129,0.55)] scale-105' 
+                          : 'border-white/50 border-dashed'
+                      }`} />
+                    </div>
+                  )}
 
                   {/* 3-2-1 Countdown Overlay */}
                   {countdown !== null && (
