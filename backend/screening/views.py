@@ -75,7 +75,7 @@ class ScreeningLiveApiView(APIView):
         client_id = request.data.get("client_id", "sbi-vcip-gateway")
         now_utc = datetime.now(timezone.utc)
 
-        # 1. Parse client telemetry
+        # 1. Parse client telemetry & active challenge
         telemetry_raw = request.data.get("telemetry") or request.data.get("telemetry_payload")
         telemetry_data = {}
         if isinstance(telemetry_raw, str):
@@ -87,6 +87,23 @@ class ScreeningLiveApiView(APIView):
             telemetry_data = telemetry_raw
         elif isinstance(telemetry_data, dict):
             telemetry_data = telemetry_raw or {}
+
+        # Check explicit file upload flags from multipart form data
+        if request.data.get("is_file_upload") in ["true", "True", True]:
+            telemetry_data["is_file_upload"] = True
+
+        # Parse active micro-challenge payload if present
+        active_challenge_raw = request.data.get("active_challenge")
+        active_challenge = None
+        if isinstance(active_challenge_raw, str):
+            try:
+                active_challenge = json.loads(active_challenge_raw)
+            except Exception:
+                active_challenge = {"type": active_challenge_raw}
+        elif isinstance(active_challenge_raw, dict):
+            active_challenge = active_challenge_raw
+        elif isinstance(telemetry_data, dict) and "active_challenge" in telemetry_data:
+            active_challenge = telemetry_data["active_challenge"]
 
         # 2. Extract uploaded video file
         video_file = request.FILES.get("video")
@@ -104,17 +121,30 @@ class ScreeningLiveApiView(APIView):
             status=ScreeningSession.StatusChoices.PROCESSING
         )
 
+        saved_video_path = None
+        saved_video_url = None
+
         try:
             if video_file:
-                # Write uploaded bytes to temporary file for OpenCV processing
+                # Write uploaded bytes to permanent media evidence folder for officer review
+                evidence_dir = os.path.join(settings.MEDIA_ROOT, "evidence")
+                os.makedirs(evidence_dir, exist_ok=True)
+
                 suffix = os.path.splitext(video_file.name)[1] or ".webm"
-                with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+                if not suffix.startswith('.'):
+                    suffix = '.' + suffix
+
+                video_filename = f"video_{session.session_id}{suffix}"
+                saved_video_path = os.path.join(evidence_dir, video_filename)
+
+                with open(saved_video_path, "wb") as f_out:
                     for chunk in video_file.chunks():
-                        tmp.write(chunk)
-                    temp_video_path = tmp.name
+                        f_out.write(chunk)
+
+                saved_video_url = f"{settings.MEDIA_URL}evidence/{video_filename}"
 
                 # Run OpenCV Video Processing Pipeline
-                proc_result = video_processor.process(temp_video_path)
+                proc_result = video_processor.process(saved_video_path)
                 meta = proc_result["metadata"]
                 duration_s = meta.get("duration_seconds", 0.0)
                 frames_total = meta.get("total_frames", 0)
@@ -123,16 +153,15 @@ class ScreeningLiveApiView(APIView):
                 sampled_frames = proc_result.get("sampled_frames", [])
                 face_crops = proc_result.get("face_crops", [])
 
-                evidence_dir = os.path.join(settings.MEDIA_ROOT, "evidence")
-                os.makedirs(evidence_dir, exist_ok=True)
-
-                # Channel 2: Passive Liveness Analysis & Dynamic EAR Plot
+                # Channel 2: Passive & Active Liveness Analysis & Dynamic EAR Plot
                 ear_plot_filename = f"ear_{session.session_id}.png"
                 ear_plot_path = os.path.join(evidence_dir, ear_plot_filename)
                 liveness_eval = liveness_analyzer.analyze_sequence(
                     frames_rgb=sampled_frames,
                     duration_s=duration_s,
-                    plot_output_path=ear_plot_path
+                    plot_output_path=ear_plot_path,
+                    face_crops=face_crops,
+                    active_challenge=active_challenge
                 )
                 liveness_score = liveness_eval["normalised_score"]
                 liveness_notes = liveness_eval["notes"]
@@ -186,11 +215,27 @@ class ScreeningLiveApiView(APIView):
                 liveness_meta=liveness_metadata
             )
 
-            # 5. Database Persistence
+            # 5. Database Persistence & Policy Decision
+            fused_score = fusion_output["fused_score"]
+            is_hard_block = fusion_output.get("is_hard_block", False)
+            block_type = fusion_output.get("block_type")
+            policy_decision = fusion_output.get("policy_decision", "REQUIRES_OFFICER_REVIEW")
+
             session.duration_s = duration_s
             session.frames_total = frames_total
             session.frames_used = frames_used
-            session.status = ScreeningSession.StatusChoices.COMPLETED
+
+            # Automated Policy Decision Rules:
+            # - Score < 25.0: Auto-Approved (COMPLETED)
+            # - Score > 60.0: Auto-Rejected (FAILED)
+            # - 25.0 <= Score <= 60.0: Pending Human Review (PENDING)
+            if is_hard_block or fused_score > 60.0:
+                session.status = ScreeningSession.StatusChoices.FAILED
+            elif fused_score < 25.0:
+                session.status = ScreeningSession.StatusChoices.COMPLETED
+            else:
+                session.status = ScreeningSession.StatusChoices.PENDING
+
             session.save()
 
             # Save Channel Results
@@ -214,7 +259,9 @@ class ScreeningLiveApiView(APIView):
                     "mean_ear": liveness_metadata.get("mean_ear", 0.0),
                     "presentation_attack_detected": liveness_metadata.get("presentation_attack_detected", False),
                     "attack_type": liveness_metadata.get("attack_type"),
-                    "moire_score": liveness_metadata.get("moire_score", 0.0)
+                    "moire_score": liveness_metadata.get("moire_score", 0.0),
+                    "crop_moire_score": liveness_metadata.get("crop_moire_score", 0.0),
+                    "chroma_ratio": liveness_metadata.get("chroma_ratio", 0.0)
                 }
             )
             ChannelResult.objects.create(
@@ -238,12 +285,27 @@ class ScreeningLiveApiView(APIView):
                 recommendation=fusion_output["recommendation"]
             )
 
+            # Save Evidence Artifacts in DB
+            if saved_video_url and saved_video_path and os.path.exists(saved_video_path):
+                try:
+                    with open(saved_video_path, "rb") as vf:
+                        v_hash = hashlib.sha256(vf.read()).hexdigest()
+                    EvidenceArtifact.objects.create(
+                        session=session,
+                        artifact_type=EvidenceArtifact.ArtifactTypeChoices.APPLICANT_VIDEO,
+                        storage_ref=saved_video_url,
+                        checksum=v_hash
+                    )
+                except Exception:
+                    pass
+
             # Generate SHA-256 payload hash and create immutable AuditLog entry
             audit_payload = {
                 "session_id": str(session.session_id),
                 "fused_score": fusion_output["fused_score"],
                 "risk_band": fusion_output["risk_band"],
                 "escalated": fusion_output["escalated"],
+                "is_hard_block": fusion_output.get("is_hard_block", False),
                 "timestamp": now_utc.isoformat()
             }
             payload_hash = hashlib.sha256(json.dumps(audit_payload, sort_keys=True).encode("utf-8")).hexdigest()
@@ -258,18 +320,29 @@ class ScreeningLiveApiView(APIView):
 
             # 6. Formulate Dual-Perspective Response
             risk_band = fusion_output["risk_band"]
-            if risk_band == "LOW":
+
+            if is_hard_block or fused_score > 60.0 or risk_band == "HIGH":
+                applicant_status = "REJECTED"
+                if block_type == "PRESENTATION_ATTACK_REPLAY":
+                    applicant_msg = "Verification rejected. Physical presence could not be confirmed (digital screen replay or presentation attack detected)."
+                elif block_type == "VIRTUAL_CAMERA_INJECTION":
+                    applicant_msg = "Verification rejected. Capture path violation: pre-recorded video injection or virtual camera detected. Live webcam stream is mandatory."
+                else:
+                    applicant_msg = f"Verification rejected. Fraud risk score ({fused_score:.1f}) exceeds security policy threshold (> 60.0)."
+            elif fused_score < 25.0 or risk_band == "LOW":
                 applicant_status = "APPROVED"
-                applicant_msg = "Video verification successful. Your KYC application has been verified."
-            elif risk_band in ["GUARDED", "ELEVATED"]:
+                applicant_msg = "Video verification successful! Your identity and biometric liveness have been verified."
+            else:
                 applicant_status = "UNDER_REVIEW"
                 applicant_msg = "Video verification received. Your session is under review by our compliance team."
-            else:
-                applicant_status = "RETRY_REQUIRED"
-                applicant_msg = "Verification could not be confirmed. Please re-try using a built-in camera in good lighting."
 
             applicant_view = {
                 "status": applicant_status,
+                "is_rejected": applicant_status == "REJECTED",
+                "is_approved": applicant_status == "APPROVED",
+                "is_under_review": applicant_status == "UNDER_REVIEW",
+                "policy_decision": policy_decision,
+                "message": applicant_msg,
                 "user_message": applicant_msg,
                 "session_id": str(session.session_id)
             }
@@ -287,7 +360,12 @@ class ScreeningLiveApiView(APIView):
                 },
                 "fused_score": fusion_output["fused_score"],
                 "risk_band": fusion_output["risk_band"],
+                "policy_decision": policy_decision,
+                "requires_review": (25.0 <= fused_score <= 60.0),
+                "is_auto_decided": (fused_score < 25.0 or fused_score > 60.0 or is_hard_block),
                 "escalated": fusion_output["escalated"],
+                "is_hard_block": is_hard_block,
+                "block_type": block_type,
                 "escalation_reason": fusion_output["escalation_reason"],
                 "recommendation": fusion_output["recommendation"],
                 "channel_scores": {
@@ -309,6 +387,7 @@ class ScreeningLiveApiView(APIView):
                 },
                 "channel_contributions": fusion_output["channel_contributions"],
                 "evidence": {
+                    "video_url": saved_video_url,
                     "gradcam_url": gradcam_url,
                     "ear_plot_url": ear_plot_url
                 },
@@ -334,11 +413,8 @@ class ScreeningLiveApiView(APIView):
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         finally:
-            if temp_video_path and os.path.exists(temp_video_path):
-                try:
-                    os.remove(temp_video_path)
-                except OSError:
-                    pass
+            # We preserve saved_video_path for forensic review in MEDIA_ROOT/evidence
+            pass
 
 
 class SessionDetailApiView(APIView):
@@ -384,10 +460,11 @@ class SessionDetailApiView(APIView):
         # Check stored or generated evidence artifacts
         artifacts = []
         for art in session.evidence_artifacts.all():
+            storage_p = getattr(art, "storage_path", None) or getattr(art, "storage_ref", "")
             artifacts.append({
                 "artifact_type": art.artifact_type,
-                "storage_path": art.storage_path,
-                "sha256_hash": art.sha256_hash
+                "storage_path": storage_p,
+                "sha256_hash": getattr(art, "sha256_hash", None) or getattr(art, "checksum", "verified")
             })
 
         # Dynamic fallback: check disk if artifacts exist in media/evidence
@@ -408,6 +485,16 @@ class SessionDetailApiView(APIView):
                     "storage_path": f"{settings.MEDIA_URL}evidence/{ear_file}",
                     "sha256_hash": "verified"
                 })
+        if not any(a["artifact_type"] in ["APPLICANT_VIDEO", "VIDEO"] for a in artifacts):
+            for ext in [".webm", ".mp4", ".mov", ".avi"]:
+                v_name = f"video_{session.session_id}{ext}"
+                if os.path.exists(os.path.join(evidence_dir, v_name)):
+                    artifacts.append({
+                        "artifact_type": "APPLICANT_VIDEO",
+                        "storage_path": f"{settings.MEDIA_URL}evidence/{v_name}",
+                        "sha256_hash": "verified"
+                    })
+                    break
 
         audit_history = [
             {
@@ -429,6 +516,20 @@ class SessionDetailApiView(APIView):
             for cr in session.channel_results.all()
         }
 
+        fused_score = fusion.fused_score if fusion else 0.0
+        is_hard_block = getattr(fusion, "is_hard_block", False) if fusion else False
+        if fused_score < 25.0:
+            policy_decision = "AUTO_APPROVED"
+            requires_review = False
+        elif fused_score > 60.0 or is_hard_block:
+            policy_decision = "AUTO_REJECTED"
+            requires_review = False
+        else:
+            requires_review = (session.status == ScreeningSession.StatusChoices.PENDING)
+            policy_decision = "REQUIRES_OFFICER_REVIEW" if requires_review else (
+                "OFFICER_APPROVED" if session.status == ScreeningSession.StatusChoices.COMPLETED else "OFFICER_REJECTED"
+            )
+
         return Response({
             "session_id": str(session.session_id),
             "client_id": session.client_id,
@@ -436,8 +537,11 @@ class SessionDetailApiView(APIView):
             "status": session.status,
             "duration_s": session.duration_s,
             "frames_used": session.frames_used,
-            "fused_score": fusion.fused_score if fusion else None,
+            "fused_score": fused_score,
             "risk_band": fusion.risk_band if fusion else None,
+            "policy_decision": policy_decision,
+            "requires_review": requires_review,
+            "is_auto_decided": (fused_score < 25.0 or fused_score > 60.0),
             "escalated": fusion.escalated if fusion else False,
             "recommendation": fusion.recommendation if fusion else "",
             "channels": channels,
@@ -460,15 +564,18 @@ class SessionReviewActionApiView(APIView):
         except ScreeningSession.DoesNotExist:
             return Response({"error": "Session not found"}, status=status.HTTP_404_NOT_FOUND)
 
-        decision = request.data.get("decision")  # "APPROVED" or "REJECTED"
-        officer_id = request.data.get("officer_id", "ANONYMOUS_OFFICER")
-        notes = request.data.get("notes", "")
-
-        if decision not in ["APPROVED", "REJECTED"]:
+        raw_decision = str(request.data.get("decision") or request.data.get("action") or "").strip().upper()
+        if raw_decision in ["APPROVE", "APPROVED"]:
+            decision = "APPROVED"
+        elif raw_decision in ["REJECT", "REJECTED"]:
+            decision = "REJECTED"
+        else:
             return Response(
                 {"error": "Invalid decision. Must be 'APPROVED' or 'REJECTED'."},
                 status=status.HTTP_400_BAD_REQUEST
             )
+        officer_id = request.data.get("officer_id", "ANONYMOUS_OFFICER")
+        notes = request.data.get("notes", "")
 
         session.status = ScreeningSession.StatusChoices.COMPLETED if decision == "APPROVED" else ScreeningSession.StatusChoices.FAILED
         session.save()
@@ -510,14 +617,31 @@ class SessionListApiView(APIView):
         session_list = []
         for s in sessions:
             fusion = getattr(s, "fusion_result", None)
+            fused_score = fusion.fused_score if fusion else 0.0
+            is_hard_block = getattr(fusion, "is_hard_block", False) if fusion else False
+
+            if fused_score < 25.0:
+                policy_decision = "AUTO_APPROVED"
+                requires_review = False
+            elif fused_score > 60.0 or is_hard_block:
+                policy_decision = "AUTO_REJECTED"
+                requires_review = False
+            else:
+                requires_review = (s.status == ScreeningSession.StatusChoices.PENDING)
+                policy_decision = "REQUIRES_OFFICER_REVIEW" if requires_review else (
+                    "OFFICER_APPROVED" if s.status == ScreeningSession.StatusChoices.COMPLETED else "OFFICER_REJECTED"
+                )
+
             session_list.append({
                 "session_id": str(s.session_id),
                 "client_id": s.client_id,
                 "created_at": s.created_at.isoformat(),
                 "status": s.status,
-                "fused_score": fusion.fused_score if fusion else None,
+                "fused_score": fused_score,
                 "risk_band": fusion.risk_band if fusion else None,
-                "escalated": fusion.escalated if fusion else False
+                "escalated": fusion.escalated if fusion else False,
+                "policy_decision": policy_decision,
+                "requires_review": requires_review
             })
 
         return Response({"count": len(session_list), "results": session_list}, status=status.HTTP_200_OK)

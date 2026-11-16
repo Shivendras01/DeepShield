@@ -28,6 +28,11 @@ VIRTUAL_CAMERA_SIGNATURES = [
     r"software\s*camera",
     r"unity\s*virtual\s*camera",
     r"screen-capture-recorder",
+    r"file\s*upload",
+    r"upload\s*source",
+    r"prerecorded",
+    r"injected",
+    r"sample\s*file",
 ]
 
 COMPILED_VIRTUAL_CAM_PATTERNS = [
@@ -69,11 +74,18 @@ class TelemetryEngine:
         for pattern in COMPILED_VIRTUAL_CAM_PATTERNS:
             match = pattern.search(cleaned_label)
             if match:
+                pattern_str = match.group(0)
+                is_upload_pattern = any(k in pattern_str.lower() for k in ["file", "upload", "prerecorded", "injected", "sample"])
+                reason_text = (
+                    f"Pre-recorded video injection signature detected: '{pattern_str}'"
+                    if is_upload_pattern else
+                    f"Known virtual camera signature detected: '{pattern_str}'"
+                )
                 return {
                     "is_virtual": True,
-                    "confidence": 0.98,
-                    "matched_pattern": match.group(0),
-                    "reason": f"Known virtual camera signature detected: '{match.group(0)}'"
+                    "confidence": 0.99,
+                    "matched_pattern": pattern_str,
+                    "reason": reason_text
                 }
 
         return {
@@ -140,15 +152,36 @@ class TelemetryEngine:
     def evaluate(self, telemetry: Dict[str, Any]) -> Dict[str, Any]:
         """
         Aggregates device identity, timing analysis, and metadata into a normalized telemetry score.
-        :param telemetry: Dict containing 'device_label', 'timestamps_ms', 'resolution', etc.
+        :param telemetry: Dict containing 'device_label', 'camera_label', 'timestamps_ms', 'is_file_upload', etc.
         :return: Dict containing raw_score, normalised_score (0-100), flagged, and diagnostic details.
         """
         telemetry = telemetry or {}
-        device_label = telemetry.get("device_label", "")
-        timestamps = telemetry.get("timestamps_ms", [])
+        device_label = (
+            telemetry.get("device_label") or
+            telemetry.get("camera_label") or
+            ""
+        )
+        timestamps = (
+            telemetry.get("timestamps_ms") or
+            telemetry.get("frame_timestamps") or
+            []
+        )
+        is_file_upload = (
+            bool(telemetry.get("is_file_upload", False)) or
+            "file upload" in str(device_label).lower() or
+            "upload source" in str(device_label).lower() or
+            "sample file" in str(device_label).lower()
+        )
 
         # 1. Device identity check
         device_check = self.check_device_identity(device_label)
+        if is_file_upload:
+            device_check = {
+                "is_virtual": True,
+                "confidence": 1.0,
+                "matched_pattern": "File Upload / Stream Bypass",
+                "reason": "Pre-recorded file upload detected. Physical camera hardware stream was bypassed (Gate 1 Injection)."
+            }
 
         # 2. Frame timing regularity check
         timing_check = self.analyze_frame_timing(timestamps)
@@ -157,7 +190,10 @@ class TelemetryEngine:
         risk_score = 5.0
         reasons = []
 
-        if device_check["is_virtual"]:
+        if is_file_upload:
+            risk_score = 100.0
+            reasons.append("Critical Gate 1 Failure: Pre-recorded video injection detected. File upload bypasses physical camera sensor.")
+        elif device_check["is_virtual"]:
             # Virtual camera is a severe red flag for KYC
             risk_score = 95.0
             reasons.append(device_check["reason"])
@@ -182,6 +218,7 @@ class TelemetryEngine:
             "normalised_score": round(normalised_score, 1),
             "flagged": flagged,
             "virtual_camera_detected": device_check["is_virtual"],
+            "is_file_upload": is_file_upload,
             "device_identity": device_check,
             "timing_analysis": timing_check,
             "reasons": reasons,
