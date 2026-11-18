@@ -1,0 +1,24 @@
+{
+  "name": "deepshield-system",
+  "version": "1.0.0",
+  "description": "DeepShield: Video Injection & Deepfake Screening System for Banking and Video-KYC",
+  "private": true,
+  "scripts": {
+    "dev": "npm --prefix frontend run dev",
+    "build": "npm --prefix frontend run build",
+    "preview": "npm --prefix frontend run preview"
+  },
+  "keywords": [
+    "deepfake-detection",
+    "video-kyc",
+    "video-injection-detection",
+    "biometric-liveness",
+    "iso-30107-pad",
+    "gradcam-explainability",
+    "pytorch",
+    "django-rest-framework",
+    "react"
+  ],
+  "author": "Shivendra Singh Chauhan (BETN1AI25069) & Divya (BETN1AI25113)",
+  "license": "MIT"
+}

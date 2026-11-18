@@ -1,0 +1,24 @@
+# ==============================================================================
+# DeepShield: Video Injection & Deepfake Screening System
+# Python Core Dependencies for Backend API and Multi-Gate AI Pipeline
+# ==============================================================================
+
+# Web Framework & REST API
+django>=5.0,<6.2
+djangorestframework>=3.14.0
+django-cors-headers>=4.3.0
+
+# Image & Video Processing
+pillow>=10.0.0
+numpy>=1.24.0
+opencv-python-headless>=4.8.0
+
+# Deep Learning & Computer Vision
+torch>=2.0.0
+torchvision>=0.15.0
+
+# Biometric & Physiological Liveness (Gate 2)
+mediapipe>=0.10.0
+
+# Explainability & Visual Artifact Generation (Grad-CAM & EAR Plots)
+matplotlib>=3.7.0
